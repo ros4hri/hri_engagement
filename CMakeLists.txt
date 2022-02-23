@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(engagement)
+project(hri_engagement)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -7,11 +7,19 @@ project(engagement)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
+find_package(catkin REQUIRED)
+
+catkin_package(
+  CATKIN_DEPENDS
   roscpp
   rospy
   std_msgs
+  hri_msgs
+  geometry_msgs
+  tf
 )
+
+catkin_install_python(PROGRAMS script/engagement_node DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
