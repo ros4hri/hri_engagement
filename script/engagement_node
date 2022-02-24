@@ -26,8 +26,10 @@ class EngagementNode(object):
         self.look_at_pub = rospy.Publisher('/look_at', PointStamped,
                                           queue_size=10)
 
-
-        self.faces_list_sub = rospy.Subscriber("/humans/faces/tracked", IdsList, self.face_list_cb)
+        self.faces_list_sub = rospy.Subscriber(
+            "/humans/faces/tracked", 
+            IdsList, 
+            self.face_list_cb)
         self.listener = tf.TransformListener()
 
         self.face_detected = []
@@ -39,31 +41,55 @@ class EngagementNode(object):
         
         self.state = 0
         self.close_faces = []
-        self.base_link = "camera_link"
+        self.base_link = "camera_link" # to change on the robot
         ### To set as __init__ param ###
         self.distance_threshold = 1.5 # distance threshold for considering faces
         self.time_threshold = 5.0 # time threshold for the retrieval of a face when lost
-        self.distance_last_position_threshold = 0.3 
+        self.distance_last_position_threshold = 0.3
+        self.gaze_distance_threshold_scale = 1 # Scaling factor for the gaze distance
         ### To set as __init__ param ###
         self.last_position = PointStamped() # last position of the lost engaged face
 
         self.closest_face = ()
-        # To change on the robot with something like head_2_eyes 
-
 
     def face_list_cb(self, msg):
         self.face_detected = msg.ids
         self.face_detected_time = msg.header.stamp
 
     def get_close_faces(self):
-        #checking for faces closer than 1.5 meters
+        # checking for faces closer than face distance threshold
         self.close_faces = []
         for face_id in self.face_detected:
-            self.listener.waitForTransform(self.base_link, "/gaze"+face_id, rospy.Time(0), rospy.Duration(4.0))
-            gaze_origin, _  = self.listener.lookupTransform(self.base_link, "/gaze"+face_id, rospy.Time(0))
-            gaze_distance = np.sqrt(gaze_origin[0]**2 + gaze_origin[1]**2 + gaze_origin[2]**2) 
-            if gaze_distance < self.distance_threshold:
-                self.close_faces.append((face_id, gaze_distance, gaze_origin))
+            try:
+                self.listener.waitForTransform(
+                    self.base_link, 
+                    "gaze"+face_id, 
+                    rospy.Time(0), 
+                    rospy.Duration(4.0))
+                gaze_origin, _  = self.listener.lookupTransform(
+                    self.base_link, 
+                    "gaze"+face_id, 
+                    rospy.Time(0))
+                gaze_origin_inverse, _ = self.listener.lookupTransform(
+                    "gaze"+face_id,
+                    self.base_link, 
+                    rospy.Time(0))
+                # gaze_origin = origin of the gaze<id> frame in base_link frame
+                # We also need to get information about the gaze direction
+                # to do this, we can check on the same vector expressed in
+                # gaze<id> frame, evaluating the length of its projection 
+                # on the XY plane.
+                face_distance = np.sqrt(gaze_origin[0]**2 \
+                                        + gaze_origin[1]**2 \
+                                        + gaze_origin[2]**2)
+                gaze_distance = np.sqrt(gaze_origin_inverse[0]**2 \
+                                        + gaze_origin_inverse[1]**2)
+                if face_distance < self.distance_threshold \
+                   and gaze_distance < (self.gaze_distance_threshold_scale*gaze_origin_inverse[2]):
+                    self.close_faces.append(
+                        (face_id, gaze_distance, gaze_origin))
+            except tf.Exception: # here it should be transform exception
+                rospy.logwarn("Missing frame %s, skipping upload", "gaze"+face_id)
 
     def get_closest_face(self):
         min_distance = 1.5
@@ -80,9 +106,9 @@ class EngagementNode(object):
     def check_for_egagement(self):
 
         '''state machine 
-        1 no engagement
-        2 engaged
-        3 retriving engagement
+        0 no engagement
+        1 engaged
+        2 retriving engagement
         '''
 
         if self.state == 0:
@@ -114,11 +140,10 @@ class EngagementNode(object):
                 if found:
                     point = PointStamped()
                     point.header.stamp = self.face_detected_time
-                    point.header.frame_id = "/gaze"+self.active_id
+                    point.header.frame_id = "gaze"+self.active_id
                     point.point.x = 0
                     point.point.y = 0
                     point.point.z = 0
-
                     self.look_at_pub.publish(point)
                 else:
                     self.active_id = ""
@@ -137,7 +162,8 @@ class EngagementNode(object):
                             np.sqrt((face_tuple[2][0]-self.last_position[0])**2 \
                                 + (face_tuple[2][1]-self.last_position[1])**2 \
                                 + (face_tuple[2][2]-self.last_position[2])**2)
-                        if distance_from_last_position < self.distance_last_position_threshold:
+                        if distance_from_last_position \
+                           < self.distance_last_position_threshold:
                             self.active_id = face_tuple[0]
                             self.state = 1
                             print('Found a face close to the last one')
@@ -160,8 +186,6 @@ class EngagementNode(object):
             self.loop_rate.sleep()
 
             elapsed_time = rospy.Time.now() - begin_time
-
-
 
 
 if __name__ == "__main__":
