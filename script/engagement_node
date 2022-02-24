@@ -21,23 +21,23 @@ import numpy as np
 class EngagementNode(object):
     def __init__(self):
         self.br = CvBridge()
-        """ Initialize the goal publisher node."""
-        self.look_at_pub = rospy.Publisher('/look_at', PointStamped,
-                                          queue_size=10)
-
+        self.look_at_pub = rospy.Publisher(
+            '/look_at',
+            PointStamped,
+            queue_size=10)
         self.faces_list_sub = rospy.Subscriber(
-            "/humans/faces/tracked", 
+            "/humans/faces/tracked",
             IdsList, 
             self.face_list_cb)
+        self.active_users_pub = rospy.Publisher(
+            "/active_users",
+            IdsList,
+            queue_size=1)
         self.listener = tf.TransformListener()
 
         self.face_detected = []
-
-        self.loop_rate = rospy.Rate(30)
-
         self.active_id = ""
         self.face_detected_time = rospy.Time.now()
-        
         self.state = 0
         self.close_faces = []
         self.base_link = "camera_link" # to change on the robot
@@ -48,14 +48,9 @@ class EngagementNode(object):
         self.gaze_distance_threshold_scale = 0.5 # Scaling factor for the gaze distance
         ################################
         self.last_position = PointStamped() # last position of the lost engaged face
-
         self.closest_face = ()
-
         self.active_users = IdsList()
-        self.active_users_pub = rospy.Publisher(
-            "/active_users",
-            IdsList,
-            queue_size=1)
+        self.loop_rate = rospy.Rate(30)
 
     def face_list_cb(self, msg):
         self.face_detected = msg.ids
@@ -97,7 +92,7 @@ class EngagementNode(object):
                 rospy.logwarn("Missing frame %s, skipping upload", "gaze"+face_id)
 
     def get_closest_face(self):
-        min_distance = 1.5
+        min_distance = self.distance_threshold
         self.closest_face = ()
         if len(self.close_faces) == 1:
             self.closest_face = self.close_faces[0]
@@ -109,7 +104,6 @@ class EngagementNode(object):
                     self.closest_face = face_tuple
 
     def check_for_egagement(self):
-
         '''state machine 
         0 no engagement
         1 engaged
@@ -179,30 +173,17 @@ class EngagementNode(object):
                 self.state = 0
 
     def send_active_users(self):
-
         self.active_users.ids = []
-
         for face_tuple in self.close_faces:
             self.active_users.ids.append(face_tuple[0])
-
         self.active_users.header.stamp = rospy.Time.now()
         self.active_users_pub.publish(self.active_users)                
 
     def run(self):
-
-        elapsed_time = rospy.Duration()
-
         while not rospy.is_shutdown():
-            begin_time = rospy.Time.now()
-            #execute our code here
-
             self.check_for_egagement()
             self.send_active_users()
-
             self.loop_rate.sleep()
-
-            elapsed_time = rospy.Time.now() - begin_time
-
 
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
