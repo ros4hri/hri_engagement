@@ -5,21 +5,17 @@ from __future__ import absolute_import
 import rospy
 from geometry_msgs.msg import PointStamped
 from hri_msgs.msg import IdsList
-
-from hri_msgs.msg import Expression
-from expressive_eyes.face_manager import FaceManager
-from expressive_eyes import expressions as exp
-from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
-import cv2
-import actionlib
-import hri_msgs.msg
 import tf
 import numpy as np
 
 
 class EngagementNode(object):
-    def __init__(self):
+    def __init__(self,
+                 distance_thr=1.5,
+                 time_thr=5.0,
+                 distance_last_position_thr=0.3,
+                 gaze_distance_scale_thr=0.5):
         self.br = CvBridge()
         self.look_at_pub = rospy.Publisher(
             '/look_at',
@@ -34,39 +30,68 @@ class EngagementNode(object):
             IdsList,
             queue_size=1)
         self.listener = tf.TransformListener()
-
-        self.face_detected = []
-        self.active_id = ""
-        self.face_detected_time = rospy.Time.now()
+        # to change on the robot
+        self.base_link = "camera_link"
+        # initial state for the state machine in check_for_engagement()
         self.state = 0
+        # IdsList of face detected (ids, header)
+        self.face_detected = IdsList()
+        # list of detected faces or faces closer than distance_thr
+        # and looking to the robot
         self.close_faces = []
-        self.base_link = "camera_link" # to change on the robot
-        ### To set as __init__ param ###
-        self.distance_threshold = 1.5 # distance threshold for considering faces
-        self.time_threshold = 5.0 # time threshold for the retrieval of a face when lost
-        self.distance_last_position_threshold = 0.3
-        self.gaze_distance_threshold_scale = 0.5 # Scaling factor for the gaze distance
-        ################################
-        self.last_position = PointStamped() # last position of the lost engaged face
         self.closest_face = ()
-        self.active_users = IdsList()
+
+        # distance threshold for considering faces
+        self.distance_thr = distance_thr
+        # time threshold for the retrieval of a face when lost
+        self.time_thr = time_thr
+        self.distance_last_position_thr = distance_last_position_thr
+        # Scaling factor for the gaze distance
+        self.gaze_distance_scale_thr = gaze_distance_scale_thr
+
+        # last position of the lost engaged face
+        self.last_position = PointStamped()
+        # active registered users in the last self.time_thr sec
+        self.active_users_register = {}
+        # id of the current engaged user
+        self.engaged_id = ""
+        self.retrieve_starting_time = rospy.Time.now()
+
         self.loop_rate = rospy.Rate(30)
 
     def face_list_cb(self, msg):
-        self.face_detected = msg.ids
-        self.face_detected_time = msg.header.stamp
+        """ Callback that updates the face_detected list
+             msg: IdList that consists of ids and header """
+        self.face_detected = msg
+
+    def update_active_users(self):
+        """ Update the current active users in self.active_users_register """
+        current_faces = {}
+
+        for face in self.close_faces:
+            current_faces[face[0]] = rospy.Time.now()
+
+        for face_id in self.active_users_register:
+            if face_id not in current_faces and \
+                    ((rospy.Time.now()
+                      - self.active_users_register[face_id]).to_sec()
+                     < self.time_thr):
+                current_faces[face_id] = self.active_users_register[face_id]
+
+        self.active_users_register = current_faces
 
     def get_close_faces(self):
-        # checking for faces closer than face distance threshold
+        """ Checking for faces closer than self.faces_distance_thr and looking
+         at the robot faces """
         self.close_faces = []
-        for face_id in self.face_detected:
+        for face_id in self.face_detected.ids:
             try:
                 self.listener.waitForTransform(
                     self.base_link, 
                     "gaze"+face_id, 
                     rospy.Time(0), 
                     rospy.Duration(4.0))
-                gaze_origin, _  = self.listener.lookupTransform(
+                gaze_origin, _ = self.listener.lookupTransform(
                     self.base_link, 
                     "gaze"+face_id, 
                     rospy.Time(0))
@@ -79,20 +104,23 @@ class EngagementNode(object):
                 # to do this, we can check on the same vector expressed in
                 # gaze<id> frame, evaluating the length of its projection 
                 # on the XY plane.
-                face_distance = np.sqrt(gaze_origin[0]**2 \
-                                        + gaze_origin[1]**2 \
+                face_distance = np.sqrt(gaze_origin[0]**2
+                                        + gaze_origin[1]**2
                                         + gaze_origin[2]**2)
-                gaze_distance = np.sqrt(gaze_origin_inverse[0]**2 \
+                gaze_distance = np.sqrt(gaze_origin_inverse[0]**2
                                         + gaze_origin_inverse[1]**2)
-                if face_distance < self.distance_threshold \
-                   and gaze_distance < (self.gaze_distance_threshold_scale*face_distance):
+                if face_distance < self.distance_thr \
+                   and gaze_distance \
+                        < (self.gaze_distance_scale_thr*face_distance):
                     self.close_faces.append(
                         (face_id, face_distance, gaze_origin))
             except tf.Exception: # here it should be transform exception
                 rospy.logwarn("Missing frame %s, skipping upload", "gaze"+face_id)
 
     def get_closest_face(self):
-        min_distance = self.distance_threshold
+        """ Update the closest face  among those which are considered
+        to be active """
+        min_distance = self.distance_thr
         self.closest_face = ()
         if len(self.close_faces) == 1:
             self.closest_face = self.close_faces[0]
@@ -104,66 +132,65 @@ class EngagementNode(object):
                     self.closest_face = face_tuple
 
     def check_for_egagement(self):
-        '''state machine 
-        0 no engagement
-        1 engaged
-        2 retriving engagement
-        '''
+        """ Manager function for the detection and update of
+        the active users """
+        self.get_close_faces()
+        self.update_active_users()
 
+        # no engagement
         if self.state == 0:
             # The robot has no trace of a person engaged
             # and looks for new people engaged
-            if len(self.face_detected) > 0:
-                self.get_close_faces()
+            if len(self.face_detected.ids) > 0:
                 if len(self.close_faces) > 0:
                     self.get_closest_face()
                     print('closest face:', self.closest_face)
-                    self.active_id = self.closest_face[0]
+                    self.engaged_id = self.closest_face[0]
                     self.state = 1
                     self.last_position = self.closest_face[2] 
 
+        # engaged
         if self.state == 1:
             # We check if the person registered as engaged
             # is still registered as a close face
-            self.get_close_faces()
             if len(self.close_faces) == 0:
                 self.state = 2
                 self.retrieve_starting_time = rospy.Time.now()
             else:
                 found = False
                 for face_tuple in self.close_faces:
-                    if self.active_id == face_tuple[0]:
+                    if self.engaged_id == face_tuple[0]:
                         found = True
                         self.last_position = face_tuple[2] 
                         break
                 if found:
                     point = PointStamped()
-                    point.header.stamp = self.face_detected_time
-                    point.header.frame_id = "gaze"+self.active_id
+                    point.header.stamp = self.face_detected.header.stamp
+                    point.header.frame_id = "gaze"+self.engaged_id
                     point.point.x = 0
                     point.point.y = 0
                     point.point.z = 0
                     self.look_at_pub.publish(point)
                 else:
-                    self.active_id = ""
+                    self.engaged_id = ""
                     self.state = 2
                     self.retrieve_starting_time = rospy.Time.now()
 
+        # retrieving engagement
         if self.state == 2:
             time_from_last_seen = \
                 (rospy.Time.now() - self.retrieve_starting_time).to_sec()
-            if time_from_last_seen < self.time_threshold:
+            if time_from_last_seen < self.time_thr:
                 print('Looking for a face close to the last one')
-                self.get_close_faces()
                 if len(self.close_faces) > 0:
                     for face_tuple in self.close_faces:
                         distance_from_last_position = \
-                            np.sqrt((face_tuple[2][0]-self.last_position[0])**2 \
-                                + (face_tuple[2][1]-self.last_position[1])**2 \
-                                + (face_tuple[2][2]-self.last_position[2])**2)
+                            np.sqrt((face_tuple[2][0]-self.last_position[0])**2
+                                    + (face_tuple[2][1]-self.last_position[1])**2
+                                    + (face_tuple[2][2]-self.last_position[2])**2)
                         if distance_from_last_position \
-                           < self.distance_last_position_threshold:
-                            self.active_id = face_tuple[0]
+                           < self.distance_last_position_thr:
+                            self.engaged_id = face_tuple[0]
                             self.state = 1
                             print('Found a face close to the last one')
                             print(face_tuple)
@@ -173,17 +200,18 @@ class EngagementNode(object):
                 self.state = 0
 
     def send_active_users(self):
-        self.active_users.ids = []
-        for face_tuple in self.close_faces:
-            self.active_users.ids.append(face_tuple[0])
-        self.active_users.header.stamp = rospy.Time.now()
-        self.active_users_pub.publish(self.active_users)                
+        """Publish the IdsList of the active users"""
+        active_users = IdsList()
+        active_users.ids = self.active_users_register.keys()
+        active_users.header.stamp = rospy.Time.now()
+        self.active_users_pub.publish(active_users)
 
     def run(self):
         while not rospy.is_shutdown():
             self.check_for_egagement()
             self.send_active_users()
             self.loop_rate.sleep()
+
 
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
