@@ -12,6 +12,7 @@ import numpy as np
 
 class EngagementNode(object):
     def __init__(self,
+                 robot_head_frame,
                  distance_thr=1.5,
                  time_thr=5.0,
                  distance_last_position_thr=0.3,
@@ -31,7 +32,7 @@ class EngagementNode(object):
             queue_size=1)
         self.listener = tf.TransformListener()
         # to change on the robot
-        self.base_link = "camera_link"
+        self.base_link = robot_head_frame
         # initial state for the state machine in check_for_engagement()
         self.state = 0
         # IdsList of face detected (ids, header)
@@ -141,6 +142,13 @@ class EngagementNode(object):
         if self.state == 0:
             # The robot has no trace of a person engaged
             # and looks for new people engaged
+            point = PointStamped()
+            point.header.stamp = self.face_detected.header.stamp
+            point.header.frame_id = self.base_link
+            point.point.x = 1.0
+            point.point.y = 0.
+            point.point.z = 0.
+            self.look_at_pub.publish(point)
             if len(self.face_detected.ids) > 0:
                 if len(self.close_faces) > 0:
                     self.get_closest_face()
@@ -210,5 +218,7 @@ class EngagementNode(object):
 
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
-    node = EngagementNode()
+    robot_head_frame = rospy.get_param("~robot_head_frame", "head_2_link")
+    node = EngagementNode(
+        robot_head_frame=robot_head_frame)
     node.run()
