@@ -127,7 +127,6 @@ class EngagementNode(object):
             self.closest_face = self.close_faces[0]
         else:
             for face_tuple in self.close_faces:
-                print(face_tuple)
                 if face_tuple[1] < min_distance:
                     min_distance = face_tuple[1]
                     self.closest_face = face_tuple
@@ -145,7 +144,6 @@ class EngagementNode(object):
             if len(self.face_detected.ids) > 0:
                 if len(self.close_faces) > 0:
                     self.get_closest_face()
-                    print('closest face:', self.closest_face)
                     self.engaged_id = self.closest_face[0]
                     self.state = 1
                     self.last_position = self.closest_face[2] 
@@ -182,7 +180,6 @@ class EngagementNode(object):
             time_from_last_seen = \
                 (rospy.Time.now() - self.retrieve_starting_time).to_sec()
             if time_from_last_seen < self.time_thr:
-                print('Looking for a face close to the last one')
                 if len(self.close_faces) > 0:
                     for face_tuple in self.close_faces:
                         distance_from_last_position = \
@@ -193,11 +190,8 @@ class EngagementNode(object):
                            < self.distance_last_position_thr:
                             self.engaged_id = face_tuple[0]
                             self.state = 1
-                            print('Found a face close to the last one')
-                            print(face_tuple)
                             break
             else:
-                print('Not found a face close to the last one: go to state 0')
                 self.state = 0
 
     def send_active_users(self):
