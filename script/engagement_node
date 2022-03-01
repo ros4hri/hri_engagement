@@ -88,21 +88,21 @@ class EngagementNode(object):
             try:
                 self.listener.waitForTransform(
                     self.base_link, 
-                    "gaze"+face_id, 
+                    "gaze_"+face_id, 
                     rospy.Time(0), 
                     rospy.Duration(4.0))
                 gaze_origin, _ = self.listener.lookupTransform(
                     self.base_link, 
-                    "gaze"+face_id, 
+                    "gaze_"+face_id, 
                     rospy.Time(0))
                 gaze_origin_inverse, _ = self.listener.lookupTransform(
-                    "gaze"+face_id,
+                    "gaze_"+face_id,
                     self.base_link, 
                     rospy.Time(0))
-                # gaze_origin = origin of the gaze<id> frame in base_link frame
+                # gaze_origin = origin of the gaze_<id> frame in base_link frame
                 # We also need to get information about the gaze direction
                 # to do this, we can check on the same vector expressed in
-                # gaze<id> frame, evaluating the length of its projection 
+                # gaze_<id> frame, evaluating the length of its projection 
                 # on the XY plane.
                 face_distance = np.sqrt(gaze_origin[0]**2
                                         + gaze_origin[1]**2
@@ -115,7 +115,8 @@ class EngagementNode(object):
                     self.close_faces.append(
                         (face_id, face_distance, gaze_origin))
             except tf.Exception: # here it should be transform exception
-                rospy.logwarn("Missing frame %s, skipping upload", "gaze"+face_id)
+                rospy.logwarn("Missing frame %s, skipping upload", \
+                    "gaze_"+face_id)
 
     def get_closest_face(self):
         """ Update the closest face  among those which are considered
@@ -166,7 +167,7 @@ class EngagementNode(object):
                 if found:
                     point = PointStamped()
                     point.header.stamp = self.face_detected.header.stamp
-                    point.header.frame_id = "gaze"+self.engaged_id
+                    point.header.frame_id = "gaze_"+self.engaged_id
                     point.point.x = 0
                     point.point.y = 0
                     point.point.z = 0
