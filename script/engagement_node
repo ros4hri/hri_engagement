@@ -19,7 +19,7 @@ class EngagementNode(object):
                  gaze_distance_scale_thr=0.5):
         self.br = CvBridge()
         self.look_at_pub = rospy.Publisher(
-            '/look_at',
+            "/look_at",
             PointStamped,
             queue_size=10)
         self.faces_list_sub = rospy.Subscriber(

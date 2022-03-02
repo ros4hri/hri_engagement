@@ -1,0 +1,11 @@
+<launch>
+
+    <arg name="robot_head_frame"/>
+
+    <node pkg="hri_engagement" name="engagement_node" type="engagement_node" output="screen">
+        <param name="robot_head_frame" value="$(arg robot_head_frame)"/>
+    </node>
+
+    <node name="look_at_relay" pkg="topic_tools" type="relay" args="/look_at /look_at_wildcard"/>
+
+</launch>
