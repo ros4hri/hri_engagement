@@ -6,13 +6,25 @@ import rospy
 from geometry_msgs.msg import PointStamped
 from hri_msgs.msg import IdsList
 from cv_bridge import CvBridge
+from sensor_msgs.msg import Image
 import tf
 import numpy as np
 
+# Semaphore colors for debugging purposes:
+# the node publishes on the /attention/semaphore
+# topic a square with possible red/yellow/green
+# color, representing the state the robot is in
+# RED ==> No Engagement
+RED = (255, 0, 0)
+# YELLOW ==> Retrieving Engagement
+YELLOW = (255, 255, 0)
+# GREEN ==> Human Engaged
+GREEN = (0, 255, 0)
 
 class EngagementNode(object):
     def __init__(self,
                  robot_head_frame,
+                 semaphore_debug=False,
                  distance_thr=1.5,
                  time_thr=5.0,
                  distance_last_position_thr=0.3,
@@ -30,11 +42,18 @@ class EngagementNode(object):
             "/active_users",
             IdsList,
             queue_size=1)
+        if semaphore_debug:
+            self.semaphore_pub = rospy.Publisher(
+                "/attention_semaphore",
+                Image,
+                queue_size=1)
         self.listener = tf.TransformListener()
         # to change on the robot
         self.base_link = robot_head_frame
         # initial state for the state machine in check_for_engagement()
         self.state = 0
+        self.semaphore_debug = semaphore_debug
+        self.semaphore = self.create_blank()
         # IdsList of face detected (ids, header)
         self.face_detected = IdsList()
         # list of detected faces or faces closer than distance_thr
@@ -81,6 +100,18 @@ class EngagementNode(object):
 
         self.active_users_register = current_faces
 
+    def create_blank(self, width=300, height=300, rgb_color=(0, 0, 0)):
+        """Create new image(numpy array) filled with certain color in RGB"""
+        # Create black blank image
+        image = np.zeros((height, width, 3), np.uint8)
+
+        # Since OpenCV uses BGR, convert the color first
+        color = tuple(reversed(rgb_color))
+        # Fill image with color
+        image[:] = color
+
+        return image
+
     def get_close_faces(self):
         """ Checking for faces closer than self.faces_distance_thr and looking
          at the robot faces """
@@ -112,7 +143,7 @@ class EngagementNode(object):
                                         + gaze_origin_inverse[1]**2)
                 if face_distance < self.distance_thr \
                    and gaze_distance \
-                        < (self.gaze_distance_scale_thr*face_distance):
+                        < (self.gaze_distance_scale_thr*gaze_origin_inverse[2]):
                     self.close_faces.append(
                         (face_id, face_distance, gaze_origin))
             except tf.Exception: # here it should be transform exception
@@ -142,6 +173,8 @@ class EngagementNode(object):
         if self.state == 0:
             # The robot has no trace of a person engaged
             # and looks for new people engaged
+            if self.semaphore_debug:
+                self.semaphore = self.create_blank(rgb_color=RED)
             point = PointStamped()
             point.header.stamp = self.face_detected.header.stamp
             point.header.frame_id = self.base_link
@@ -160,6 +193,8 @@ class EngagementNode(object):
         if self.state == 1:
             # We check if the person registered as engaged
             # is still registered as a close face
+            if self.semaphore_debug:
+                self.semaphore = self.create_blank(rgb_color=GREEN)
             if len(self.close_faces) == 0:
                 self.state = 2
                 self.retrieve_starting_time = rospy.Time.now()
@@ -185,6 +220,8 @@ class EngagementNode(object):
 
         # retrieving engagement
         if self.state == 2:
+            if self.semaphore_debug:
+                self.semaphore = self.create_blank(rgb_color=YELLOW)
             time_from_last_seen = \
                 (rospy.Time.now() - self.retrieve_starting_time).to_sec()
             if time_from_last_seen < self.time_thr:
@@ -201,6 +238,9 @@ class EngagementNode(object):
                             break
             else:
                 self.state = 0
+        if self.semaphore_debug:    
+            self.semaphore_pub.publish(
+                self.br.cv2_to_imgmsg(self.semaphore, "bgr8"))
 
     def send_active_users(self):
         """Publish the IdsList of the active users"""
@@ -219,6 +259,8 @@ class EngagementNode(object):
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
     robot_head_frame = rospy.get_param("~robot_head_frame", "head_2_link")
+    semaphore_debug = rospy.get_param("~semaphore_debug", False)
     node = EngagementNode(
-        robot_head_frame=robot_head_frame)
+        robot_head_frame=robot_head_frame,
+        semaphore_debug=semaphore_debug)
     node.run()
