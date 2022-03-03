@@ -8,6 +8,4 @@
         <param name="semaphore_debug" value="$(arg semaphore_debug)"/>
     </node>
 
-    <node name="look_at_relay" pkg="topic_tools" type="relay" args="/look_at /look_at_wildcard"/>
-
 </launch>

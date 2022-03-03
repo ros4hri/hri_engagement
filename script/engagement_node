@@ -3,7 +3,7 @@
 
 from __future__ import absolute_import
 import rospy
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, PoseStamped
 from hri_msgs.msg import IdsList
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
@@ -35,6 +35,10 @@ class EngagementNode(object):
             "/look_at",
             PointStamped,
             queue_size=10)
+        self.move_head_pub = rospy.Publisher(
+            "/look_to_wildcard",
+            PoseStamped,
+            queue_size=1)
         self.faces_list_sub = rospy.Subscriber(
             "/humans/faces/tracked",
             IdsList, 
@@ -213,8 +217,13 @@ class EngagementNode(object):
                     point.point.x = 0
                     point.point.y = 0
                     point.point.z = 0
+                    pose = PoseStamped()
+                    pose.header.stamp = point.header.stamp
+                    pose.header.frame_id = point.header.frame_id
+                    pose.pose.position = point.point
                     if not self.prev_position:
                         self.look_at_pub.publish(point)
+                        self.move_head_pub.publish(pose)
                     else:
                         # if the distance between the current position of the 
                         # engaged face and the last one that the eyes moved for
@@ -228,6 +237,7 @@ class EngagementNode(object):
                             +(self.prev_position[2]-self.last_position[2])**2)
                         if distance_prev_current_position > self.change_gaze_thr:
                             self.look_at_pub.publish(point)
+                            self.move_head_pub.publish(pose)
                     self.prev_position = self.last_position    
                 else:
                     self.engaged_id = ""
@@ -261,7 +271,12 @@ class EngagementNode(object):
                 point.point.x = 1.0
                 point.point.y = 0.
                 point.point.z = 0.
+                pose = PoseStamped()
+                pose.header.stamp = point.header.stamp
+                pose.header.frame_id = point.header.frame_id
+                pose.pose.position = point.point
                 self.look_at_pub.publish(point)
+                self.move_head_pub.publish(pose)
 
         if self.semaphore_debug:    
             self.semaphore_pub.publish(
