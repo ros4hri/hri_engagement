@@ -28,7 +28,8 @@ class EngagementNode(object):
                  distance_thr=1.5,
                  time_thr=5.0,
                  distance_last_position_thr=0.3,
-                 gaze_distance_scale_thr=0.5):
+                 gaze_distance_scale_thr=0.5,
+                 change_gaze_thr=0.2):
         self.br = CvBridge()
         self.look_at_pub = rospy.Publisher(
             "/look_at",
@@ -52,14 +53,18 @@ class EngagementNode(object):
         self.base_link = robot_head_frame
         # initial state for the state machine in check_for_engagement()
         self.state = 0
+        # semaphore debugging: publishing a one-color image on a topic
+        # representing the current state of the state machine. 
         self.semaphore_debug = semaphore_debug
-        self.semaphore = self.create_blank()
+        if semaphore_debug:
+            self.semaphore = self.create_blank()
         # IdsList of face detected (ids, header)
         self.face_detected = IdsList()
         # list of detected faces or faces closer than distance_thr
         # and looking to the robot
         self.close_faces = []
         self.closest_face = ()
+        self.prev_position = None
 
         # distance threshold for considering faces
         self.distance_thr = distance_thr
@@ -68,6 +73,8 @@ class EngagementNode(object):
         self.distance_last_position_thr = distance_last_position_thr
         # Scaling factor for the gaze distance
         self.gaze_distance_scale_thr = gaze_distance_scale_thr
+        # Distance threshold for changing the gaze position
+        self.change_gaze_thr = change_gaze_thr
 
         # last position of the lost engaged face
         self.last_position = PointStamped()
@@ -175,19 +182,13 @@ class EngagementNode(object):
             # and looks for new people engaged
             if self.semaphore_debug:
                 self.semaphore = self.create_blank(rgb_color=RED)
-            point = PointStamped()
-            point.header.stamp = self.face_detected.header.stamp
-            point.header.frame_id = self.base_link
-            point.point.x = 1.0
-            point.point.y = 0.
-            point.point.z = 0.
-            self.look_at_pub.publish(point)
             if len(self.face_detected.ids) > 0:
                 if len(self.close_faces) > 0:
                     self.get_closest_face()
                     self.engaged_id = self.closest_face[0]
                     self.state = 1
-                    self.last_position = self.closest_face[2] 
+                    self.last_position = self.closest_face[2]
+                    self.prev_position = None 
 
         # engaged
         if self.state == 1:
@@ -212,7 +213,22 @@ class EngagementNode(object):
                     point.point.x = 0
                     point.point.y = 0
                     point.point.z = 0
-                    self.look_at_pub.publish(point)
+                    if not self.prev_position:
+                        self.look_at_pub.publish(point)
+                    else:
+                        # if the distance between the current position of the 
+                        # engaged face and the last one that the eyes moved for
+                        # is higher than a specific threshold value, than a new
+                        # point is published on the /look_at topic and the robot
+                        # will move its eyes. This architecture limits the 
+                        # publishing rate on the /look_at topic. 
+                        distance_prev_current_position = np.sqrt(
+                            (self.prev_position[0]-self.last_position[0])**2\
+                            +(self.prev_position[1]-self.last_position[1])**2\
+                            +(self.prev_position[2]-self.last_position[2])**2)
+                        if distance_prev_current_position > self.change_gaze_thr:
+                            self.look_at_pub.publish(point)
+                    self.prev_position = self.last_position    
                 else:
                     self.engaged_id = ""
                     self.state = 2
@@ -235,9 +251,18 @@ class EngagementNode(object):
                            < self.distance_last_position_thr:
                             self.engaged_id = face_tuple[0]
                             self.state = 1
+                            self.prev_position = None
                             break
             else:
                 self.state = 0
+                point = PointStamped()
+                point.header.stamp = self.face_detected.header.stamp
+                point.header.frame_id = self.base_link
+                point.point.x = 1.0
+                point.point.y = 0.
+                point.point.z = 0.
+                self.look_at_pub.publish(point)
+
         if self.semaphore_debug:    
             self.semaphore_pub.publish(
                 self.br.cv2_to_imgmsg(self.semaphore, "bgr8"))
