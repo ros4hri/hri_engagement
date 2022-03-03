@@ -267,10 +267,10 @@ class EngagementNode(object):
                 self.state = 0
                 point = PointStamped()
                 point.header.stamp = self.face_detected.header.stamp
-                point.header.frame_id = self.base_link
+                point.header.frame_id = "base_link"
                 point.point.x = 1.0
                 point.point.y = 0.
-                point.point.z = 0.
+                point.point.z = 1.6
                 pose = PoseStamped()
                 pose.header.stamp = point.header.stamp
                 pose.header.frame_id = point.header.frame_id
