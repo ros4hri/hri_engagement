@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 from __future__ import absolute_import
 import rospy
 from hri_msgs.msg import IdsList
 from hri_msgs.msg import EngagementLevel
 from cv_bridge import CvBridge
-from sensor_msgs.msg import RegionOfInterest
 from std_msgs.msg import String
 import tf
 
 import numpy as np
-from enum import Enum
+import enum
 
+class EngagementStatus(enum.Enum):
+    """
+    Auxiliary class to print in a more intuitive way the engagement status
+    """
+
+    # unknown: no information is provided about the engagement level
+    UNKNOWN = 0
+    # disengaged: the human has not looked in the direction of the robot
+    DISENGAGED = 1
+    # engaging: the human has started to look in the direction of the robot
+    ENGAGING = 2
+    # engaged: the human is fully engaged with the robot
+    ENGAGED = 3
+    # disengaging: the human has started to look away from the robot
+    DISENGAGING = 4
 
 
 class EngagementNode(object):
     def __init__(self,
                  robot_head_frame,
+                 timer_writing_kb,
                  distance_thr=1.5,
                  gaze_distance_scale_thr=0.5):
         """
@@ -26,17 +40,9 @@ class EngagementNode(object):
         :param gaze_distance_scale_thr: value used to define the FoV of the agents (either a human or robot)
         """
         self.br = CvBridge()
-        self.faces_list_sub = rospy.Subscriber(
-            "/humans/faces/tracked",
-            IdsList,
-            self.face_list_cb)
-
         self.listener = tf.TransformListener()
         # to change on the robot
         self.base_link = robot_head_frame
-
-        # IdsList of face detected (ids, header)
-        self.face_detected = IdsList()
 
         # distance threshold for considering faces
         self.distance_thr = distance_thr
@@ -44,9 +50,9 @@ class EngagementNode(object):
         self.gaze_distance_scale_thr = gaze_distance_scale_thr
 
         # frame rate of the node
-        self.frame_rate = 5
+        self.frame_rate = 30
         # time for engagement history
-        self.buffer_time = 5
+        self.buffer_time = 2
         # number of samples used to infer the user's engagement
         self.engagement_history_size = self.frame_rate * self.buffer_time
 
@@ -56,32 +62,75 @@ class EngagementNode(object):
         # ["disengaged"], ["engaging"]
         self.humans_current_engagement_level = dict()
 
-        self.active_humans = list()
-        self.loop_rate = rospy.Rate(5)
+        # known: humans already tracked and known
+        # tracked: among those who are known the currently tracked
+        # active: the humans who are tracked and in the engagement zone
 
-    def face_list_cb(self, msg):
-        """ Callback that updates the face_detected list
+        # those humans who are actively detected
+        self.tracked_humans_in_the_scene = IdsList()
+        # those humans who are already known
+        self.known_humans =IdsList()
+        # those humans who are actively detected and at a distance less than self.distance_thr
+        self.active_humans = list()
+
+        # for the current version in order to compute engagement we need to get the transformation
+        # from the gaze_id published as tf by the hri_face_detection
+        self.face_id = ""
+
+        # timers callback
+        self.rate = 30
+        self.timer_run = rospy.Timer(rospy.Duration(1/self.rate), self.run)
+        self.timer_pub = rospy.Timer(rospy.Duration(timer_writing_kb), self.send_engaged_status)
+
+
+
+    def tracked_human_list_cb(self, msg):
+        """ Callback that updates the detected persons
              msg: IdList that consists of ids and header """
-        self.face_detected = msg
+        self.tracked_humans_in_the_scene = msg
+
+    def known_human_list_cb(self, msg):
+        """ Callback that returns the list of the detected persons
+             msg: IdList that consists of ids and header """
+        self.known_humans = msg
+
+    def get_face_id_cb(self, msg):
+        """Callback that returs the face_id assigned to a person id"""
+        self.face_id = msg.data
 
     def get_active_humans(self):
-        """ Checking for faces closer than self.faces_distance_thr"""
+        """ Checking for tracked persons closer than self.distance_thr"""
+        while(not self.tracked_humans_in_the_scene.ids):
+            # read the current tracked humans
+            rospy.Subscriber(
+                    "/humans/persons/tracked",
+                    IdsList,
+                    self.tracked_human_list_cb)
 
-        for face_id in self.face_detected.ids:
+        for human_id in self.tracked_humans_in_the_scene.ids:
             # for each active human we initialise the engagement history vector
-            if face_id not in self.humans_engagement_history:
-                self.humans_engagement_history[face_id] = [0]
-                self.humans_current_engagement_level[face_id] = EngagementLevel.DISENGAGED
+            if human_id not in self.humans_engagement_history:
+                self.humans_engagement_history[human_id] = [0]
+                self.humans_current_engagement_level[human_id] = EngagementLevel.DISENGAGED
             try:
+                # read the current face_id of the humans
+                while(not self.face_id):
+                    rospy.Subscriber(
+                        "/humans/persons/"+human_id+"/face_id",
+                        String,
+                        self.get_face_id_cb)
+                    rospy.loginfo(f"face_id {self.face_id}")
+
                 # transform from base link to gaze_[face_id]
                 self.listener.waitForTransform(
                     self.base_link,
-                    "gaze_" + face_id,
+                    "gaze_" + self.face_id,
                     rospy.Time(0),
                     rospy.Duration(4.0))
+
                 gaze_origin, _ = self.listener.lookupTransform(
                     self.base_link,
-                    "gaze_" + face_id,
+                    "gaze_" + self.face_id,
                     rospy.Time(0))
 
                 face_distance = np.sqrt(gaze_origin[0] ** 2
@@ -89,74 +138,85 @@ class EngagementNode(object):
                                         + gaze_origin[2] ** 2)
 
                 if face_distance < self.distance_thr and \
-                        face_id not in list(map(lambda x: x[0], self.active_humans)):
-                    self.active_humans.append((face_id, rospy.Time.now(), face_distance))
+                        human_id not in list(map(lambda x: x[0], self.active_humans)):
+                    self.active_humans.append((human_id, rospy.Time.now(), face_distance))
 
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                 continue
 
-    def compute_engagement(self, face_id):
+            except tf.Exception:
+                # here it should be transform exception
+                rospy.logwarn("Missing frame %s, skipping upload", "gaze_" + self.face_id)
+
+    def compute_engagement(self, human_id):
         """here we need to compute the engagement level of each active human
-        the level is assigned to "disengaged",  "engaging", "engaged", "disengaging"
-        depending on the average value memorised in the engagement_buffer for
-        each human
+        the status of each human can be "unknown", "disengaged",  "engaging",
+        "engaged", "disengaging", depending on the average value memorised in
+        the engagement_buffer for each human.
         At the beginning all the active humans are disengaged
         """
 
         # waiting a few frames before assessing whether a person is engaged or not
-        if len(self.humans_engagement_history[face_id]) < self.engagement_history_size:
-            rospy.loginfo("waiting {} for human {} to engage with the robot".
-                          format(self.humans_engagement_history[face_id], face_id))
+        if len(self.humans_engagement_history[human_id]) < self.engagement_history_size:
+            rospy.loginfo("building buffer for human {}".format(human_id))
         else:
-            self.humans_engagement_history[face_id] = \
-                self.humans_engagement_history[face_id][-self.engagement_history_size:]
-            #compute the average engagement value
-            engagement_value = sum(self.humans_engagement_history[face_id][-self.engagement_history_size:]) \
+            # clean up the buffer
+            self.humans_engagement_history[human_id] = \
+                self.humans_engagement_history[human_id][-self.engagement_history_size:]
+
+            # compute the average engagement value
+            engagement_value = sum(self.humans_engagement_history[human_id]
+                                   [-self.engagement_history_size:]) \
                                / self.engagement_history_size
 
-            if self.humans_current_engagement_level[face_id] == EngagementLevel.DISENGAGED:
-                if -1 <= engagement_value < -0.5:
-                    self.humans_current_engagement_level[face_id] = EngagementLevel.DISENGAGED
+            if self.humans_current_engagement_level[human_id] == EngagementLevel.DISENGAGED:
+                if -1 <= engagement_value < 0:
+                    self.humans_current_engagement_level[human_id] = EngagementLevel.DISENGAGED
                 else:
-                    self.humans_current_engagement_level[face_id] = EngagementLevel.ENGAGING
+                    self.humans_current_engagement_level[human_id] = EngagementLevel.ENGAGING
 
-            elif self.humans_current_engagement_level[face_id] == EngagementLevel.ENGAGING:
+            elif self.humans_current_engagement_level[human_id] == EngagementLevel.ENGAGING:
                 if -1 <= engagement_value < -0.5:
-                    self.humans_current_engagement_level[face_id] = EngagementLevel.DISENGAGED
+                    self.humans_current_engagement_level[human_id] = EngagementLevel.DISENGAGED
                 elif -0.5 <= engagement_value < 0.0:
-                    self.humans_current_engagement_level[face_id] = EngagementLevel.ENGAGING
+                    self.humans_current_engagement_level[human_id] = EngagementLevel.ENGAGING
                 else:
-                    self.humans_current_engagement_level[face_id] = EngagementLevel.ENGAGED
+                    self.humans_current_engagement_level[human_id] = EngagementLevel.ENGAGED
 
-            elif self.humans_current_engagement_level[face_id] == EngagementLevel.ENGAGED:
+            elif self.humans_current_engagement_level[human_id] == EngagementLevel.ENGAGED:
                 if engagement_value > 0.0:
-                    self.humans_current_engagement_level[face_id] == EngagementLevel.ENGAGED
+                    self.humans_current_engagement_level[human_id] == EngagementLevel.ENGAGED
                 elif engagement_value <= 0.0:
-                    self.humans_current_engagement_level[face_id] = EngagementLevel.DISENGAGING
+                    self.humans_current_engagement_level[human_id] = EngagementLevel.DISENGAGING
 
-            elif self.humans_current_engagement_level[face_id] == EngagementLevel.DISENGAGING:
+            elif self.humans_current_engagement_level[human_id] == EngagementLevel.DISENGAGING:
                 if engagement_value > 0.0:
-                    self.humans_current_engagement_level[face_id] == EngagementLevel.ENGAGED
+                    self.humans_current_engagement_level[human_id] == EngagementLevel.ENGAGED
                 elif engagement_value <= 0.0:
-                    self.humans_current_engagement_level[face_id] = EngagementLevel.DISENGAGED
+                    self.humans_current_engagement_level[human_id] = EngagementLevel.DISENGAGED
 
-            rospy.loginfo("Engagement status for {} is: {}".
-                          format(face_id, self.humans_current_engagement_level[face_id]))
-
+        rospy.loginfo("Engagement status for {} is: {}".format(human_id, EngagementStatus(self.humans_current_engagement_level[human_id])))
 
     def get_engaged_humans(self):
         """ Checking for humans who are active and update their engagement state
          at the robot faces """
-        for face in self.active_humans:
+
+        # each entry of active_humans is a tuple as follows (human_id, rospy.Time.now(), face_distance)
+        for human in self.active_humans:
             try:
-                # transform from gaze_[face_id] to base_link
+                # read the current face_id of the humans
+                rospy.Subscriber(
+                    "/humans/persons/" + human[0] + "/face_id",
+                    String,
+                    self.get_face_id_cb)
+                # transform from gaze_[human_id] to base_link
                 self.listener.waitForTransform(
-                    "gaze_" + face[0],
+                    "gaze_" + self.face_id,
                     self.base_link,
                     rospy.Time(0),
                     rospy.Duration(4.0))
                 gaze_origin_inverse, _ = self.listener.lookupTransform(
-                    "gaze_" + face[0],
+                    "gaze_" + self.face_id,
                     self.base_link,
                     rospy.Time(0))
                 # check on the same vector expressed in gaze_<id> frame,
@@ -164,45 +224,49 @@ class EngagementNode(object):
                 # on the XY plane.
                 gaze_distance = np.sqrt(gaze_origin_inverse[0] ** 2
                                         + gaze_origin_inverse[1] ** 2)
-
+                # the human is currently engaged
                 if gaze_distance < \
                         (self.gaze_distance_scale_thr * gaze_origin_inverse[2]):
-                    self.humans_engagement_history[face[0]].append(1)
+                    self.humans_engagement_history[human[0]].append(1)
                 else:
-                    # the human is currently disengaged, it might have just lost their engagement,
-                    # or they are in this state since a while
-                    # check human previous history
-                    self.humans_engagement_history[face[0]].append(-1)
+                    # the human is currently disengaged
+                    self.humans_engagement_history[human[0]].append(-1)
 
-                self.compute_engagement(face[0])
+                self.compute_engagement(human[0])
 
             except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                rospy.loginfo("tf exception ".format(tf))
                 continue
 
-    def send_engaged_status(self):
-        """Publish the IdsList of the active humans"""
+            except tf.Exception:
+                # here it should be transform exception
+                rospy.logwarn("Missing frame %s, skipping upload", "gaze_" + self.face_id)
 
-        for face_id, engagement_status in self.humans_current_engagement_level.items():
+
+    def send_engaged_status(self, event=None):
+        """Publish the IdsList of the engaged humans"""
+        for human_id, engagement_status in self.humans_current_engagement_level.items():
             # N.B: <face_id> needs to be replace with <person_id>
             engaged_humans_pub = rospy.Publisher(
-                "/humans/persons/" + face_id + "/engagement_status",
+                "/humans/persons/" + human_id + "/engagement_status",
                 EngagementLevel,
-                queue_size=1)
+                queue_size=10)
             engagement_msg = EngagementLevel()
             engagement_msg.level = engagement_status
-            #rospy.loginfo("Engagement status for {} is: {}".format(face_id, engagement_status))
-            engaged_humans_pub.publish(engagement_status)
+            rospy.loginfo("Published Engagement status for {} is: {}"
+                          .format(human_id, EngagementStatus(engagement_status)))
+            engaged_humans_pub.publish(engagement_msg)
 
-    def run(self):
-        while not rospy.is_shutdown():
-            self.get_active_humans()
-            self.get_engaged_humans()
-            self.send_engaged_status()
-
+    def run(self, event=None):
+        #while not rospy.is_shutdown():
+        self.get_active_humans()
+        self.get_engaged_humans()
 
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
     robot_head_frame = rospy.get_param("~robot_head_frame", "head_2_link")
+    timer_writing_kb = rospy.get_param(param_name="~kb_pub_rate")
     node = EngagementNode(
-        robot_head_frame=robot_head_frame)
-    node.run()
+        robot_head_frame=robot_head_frame,
+        timer_writing_kb=timer_writing_kb)
+    rospy.spin()

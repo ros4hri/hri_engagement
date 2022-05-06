@@ -2,10 +2,12 @@
 
     <arg name="semaphore_debug" default="False"/>
     <arg name="robot_head_frame" default="/camera_link" />
+    <arg name="kb_pub_rate" default="1" type="int"/>
 
     <node pkg="hri_engagement" name="engagement_node" type="engagement_node" output="screen">
         <param name="robot_head_frame" value="$(arg robot_head_frame)"/>
         <param name="semaphore_debug" value="$(arg semaphore_debug)"/>
+        <param name="kb_pub_rate" value="$(arg kb_pub_rate)"/>
     </node>
 
 </launch>
