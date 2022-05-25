@@ -6,8 +6,7 @@
 
     <node pkg="hri_engagement" name="engagement_node" type="engagement_node" output="screen">
         <param name="robot_head_frame" value="$(arg robot_head_frame)"/>
-        <param name="semaphore_debug" value="$(arg semaphore_debug)"/>
-        <param name="kb_pub_rate" value="$(arg kb_pub_rate)"/>
+        <param name="engagement_status_pb_rate" value="$(arg engagement_status_pb_rate)"/>
     </node>
 
 </launch>

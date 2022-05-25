@@ -11,11 +11,11 @@ import tf
 import numpy as np
 import enum
 
+
 class EngagementStatus(enum.Enum):
     """
     Auxiliary class to print in a more intuitive way the engagement status
     """
-
     # unknown: no information is provided about the engagement level
     UNKNOWN = 0
     # disengaged: the human has not looked in the direction of the robot
@@ -34,18 +34,20 @@ class EngagementNode(object):
     publish it on /humans/persons/<human_id>/engagement_status
     # tracked humans are those who are known and currently tracked
     # active humans are those who are known, currently tracked
-    and not in the engagement zone
+    and in the engagement zone
     (distance from the robot < zone distance_thr)
     """
 
     def __init__(self,
                  robot_head_frame,
-                 timer_writing_kb,
+                 engagement_status_pb_rate,
                  distance_thr=1.5,
                  gaze_distance_scale_thr=0.5):
         """
         :param robot_head_frame: -> str
         frame of the robot head
+        :param engagement_status_pb_rate -> Int
+        publishing rate of the human engagement status
         :param distance_thr: -> float
         max distance used by the robot to look for active users
         :param gaze_distance_scale_thr: -> float
@@ -88,11 +90,9 @@ class EngagementNode(object):
 
         # timers callback
         self.rate = 30
-        self.timer_run = rospy.Timer(rospy.Duration(1/self.rate), self.run)
-        self.timer_pub = rospy.Timer(rospy.Duration(timer_writing_kb),
+        self.timer_run = rospy.Timer(rospy.Duration(1 / self.rate), self.run)
+        self.timer_pub = rospy.Timer(rospy.Duration(engagement_status_pb_rate),
                                      self.send_engaged_status)
-
-
 
     def tracked_human_list_cb(self, msg):
         """ Callback that updates the detected persons
@@ -112,9 +112,9 @@ class EngagementNode(object):
         while not self.tracked_humans_in_the_scene.ids:
             # read the current tracked humans
             rospy.Subscriber(
-                    "/humans/persons/tracked",
-                    IdsList,
-                    self.tracked_human_list_cb)
+                "/humans/persons/tracked",
+                IdsList,
+                self.tracked_human_list_cb)
 
         for human_id in self.tracked_humans_in_the_scene.ids:
             # for each active human we initialise the engagement history vector
@@ -126,7 +126,7 @@ class EngagementNode(object):
                 # read the current face_id of the humans
                 while not self.face_id:
                     rospy.Subscriber(
-                        "/humans/persons/"+human_id+"/face_id",
+                        "/humans/persons/" + human_id + "/face_id",
                         String,
                         self.get_face_id_cb)
                     rospy.loginfo(f"face_id {self.face_id}")
@@ -148,8 +148,10 @@ class EngagementNode(object):
                                         + gaze_origin[2] ** 2)
 
                 if face_distance < self.distance_thr and \
-                        human_id not in list(map(lambda x: x[0], self.active_humans)):
-                    self.active_humans.append((human_id, rospy.Time.now(), face_distance))
+                        human_id not in list(map(lambda x: x[0],
+                                                 self.active_humans)):
+                    self.active_humans.append((human_id, rospy.Time.now(),
+                                               face_distance))
 
             except (tf.LookupException, tf.ConnectivityException,
                     tf.ExtrapolationException):
@@ -157,11 +159,12 @@ class EngagementNode(object):
 
             except tf.Exception:
                 # here it should be transform exception
-                rospy.logwarn("Missing frame %s, skipping upload", "gaze_" + self.face_id)
+                rospy.logwarn("Missing frame %s, skipping upload",
+                              "gaze_" + self.face_id)
 
     def compute_engagement(self, human_id):
         """ Computes the engagement level of each active human
-        the status of each human can be "unknown", "disengaged",  "engaging",
+        the status of each human can be "unknown", "disengaged", "engaging",
         "engaged", "disengaging", depending on the average value stored in
         the engagement_buffer for each human.
         At the beginning all the active humans are disengaged
@@ -184,43 +187,43 @@ class EngagementNode(object):
                                    [-self.engagement_history_size:]) \
                                / self.engagement_history_size
 
-            if self.humans_current_engagement_level[human_id]\
+            if self.humans_current_engagement_level[human_id] \
                     == EngagementLevel.DISENGAGED:
                 if -1 <= engagement_value < 0:
-                    self.humans_current_engagement_level[human_id]\
+                    self.humans_current_engagement_level[human_id] \
                         = EngagementLevel.DISENGAGED
                 else:
-                    self.humans_current_engagement_level[human_id]\
+                    self.humans_current_engagement_level[human_id] \
                         = EngagementLevel.ENGAGING
 
-            elif self.humans_current_engagement_level[human_id]\
+            elif self.humans_current_engagement_level[human_id] \
                     == EngagementLevel.ENGAGING:
                 if -1 <= engagement_value < -0.5:
-                    self.humans_current_engagement_level[human_id]\
+                    self.humans_current_engagement_level[human_id] \
                         = EngagementLevel.DISENGAGED
                 elif -0.5 <= engagement_value < 0.0:
-                    self.humans_current_engagement_level[human_id]\
+                    self.humans_current_engagement_level[human_id] \
                         = EngagementLevel.ENGAGING
                 else:
-                    self.humans_current_engagement_level[human_id]\
+                    self.humans_current_engagement_level[human_id] \
                         = EngagementLevel.ENGAGED
 
-            elif self.humans_current_engagement_level[human_id]\
+            elif self.humans_current_engagement_level[human_id] \
                     == EngagementLevel.ENGAGED:
                 if engagement_value > 0.0:
-                    self.humans_current_engagement_level[human_id]\
-                    == EngagementLevel.ENGAGED
+                    self.humans_current_engagement_level[human_id] \
+                        = EngagementLevel.ENGAGED
                 elif engagement_value <= 0.0:
-                    self.humans_current_engagement_level[human_id]\
+                    self.humans_current_engagement_level[human_id] \
                         = EngagementLevel.DISENGAGING
 
-            elif self.humans_current_engagement_level[human_id]\
+            elif self.humans_current_engagement_level[human_id] \
                     == EngagementLevel.DISENGAGING:
                 if engagement_value > 0.0:
-                    self.humans_current_engagement_level[human_id]\
-                    == EngagementLevel.ENGAGED
+                    self.humans_current_engagement_level[human_id] \
+                        = EngagementLevel.ENGAGED
                 elif engagement_value <= 0.0:
-                    self.humans_current_engagement_level[human_id]\
+                    self.humans_current_engagement_level[human_id] \
                         = EngagementLevel.DISENGAGED
 
         rospy.loginfo("Engagement status for {} is: {}".format(
@@ -228,7 +231,8 @@ class EngagementNode(object):
             EngagementStatus(self.humans_current_engagement_level[human_id])))
 
     def get_engaged_humans(self):
-        """ it checks for humans who are active and updates their engagement status """
+        """ it checks for humans who are active and updates
+        their engagement status """
 
         # each entry of active_humans is a tuple as follows
         # (human_id, rospy.Time.now(), face_distance)
@@ -271,14 +275,15 @@ class EngagementNode(object):
 
             except tf.Exception:
                 # here it should be transform exception
-                rospy.logwarn("Missing frame %s, skipping upload", "gaze_" + self.face_id)
-
+                rospy.logwarn("Missing frame %s, skipping upload",
+                              "gaze_" + self.face_id)
 
     def send_engaged_status(self, event=None):
         """ Timer callback to publish the IdsList of the engaged humans
         according to timer set in the constructor """
 
-        for human_id, engagement_status in self.humans_current_engagement_level.items():
+        for human_id, engagement_status in \
+                self.humans_current_engagement_level.items():
             engaged_humans_pub = rospy.Publisher(
                 "/humans/persons/" + human_id + "/engagement_status",
                 EngagementLevel,
@@ -293,11 +298,12 @@ class EngagementNode(object):
         self.get_active_humans()
         self.get_engaged_humans()
 
+
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
     robot_head_frame = rospy.get_param("~robot_head_frame", "head_2_link")
-    timer_writing_kb = rospy.get_param(param_name="~kb_pub_rate")
+    engagement_status_pb_rate = rospy.get_param(param_name="~engagement_status_pb_rate", default=10)
     node = EngagementNode(
         robot_head_frame=robot_head_frame,
-        timer_writing_kb=timer_writing_kb)
+        engagement_status_pb_rate=engagement_status_pb_rate)
     rospy.spin()
