@@ -91,7 +91,7 @@ class EngagementNode(object):
         # timers callback
         self.rate = 30
         self.timer_run = rospy.Timer(rospy.Duration(1 / self.rate), self.run)
-        self.timer_pub = rospy.Timer(rospy.Duration(engagement_status_pb_rate),
+        self.timer_pub = rospy.Timer(rospy.Duration(1 / engagement_status_pb_rate),
                                      self.send_engaged_status)
 
     def tracked_human_list_cb(self, msg):
@@ -100,21 +100,14 @@ class EngagementNode(object):
              ids and header of the tracked humans """
         self.tracked_humans_in_the_scene = msg
 
-    def get_face_id_cb(self, msg):
-        """Callback that returns the face_id assigned to a person id
-            :param msg: -> str
-        """
-        self.face_id = msg.data
 
     def get_active_humans(self):
         """ Checking for tracked persons closer than self.distance_thr"""
 
-        while not self.tracked_humans_in_the_scene.ids:
-            # read the current tracked humans
-            rospy.Subscriber(
-                "/humans/persons/tracked",
-                IdsList,
-                self.tracked_human_list_cb)
+        self.tracked_humans_in_the_scene = rospy.wait_for_message("/humans/persons/tracked",
+                                                                  IdsList, timeout=1)
+
+        current_face_id = None
 
         for human_id in self.tracked_humans_in_the_scene.ids:
             # for each active human we initialise the engagement history vector
@@ -124,23 +117,20 @@ class EngagementNode(object):
                     = EngagementLevel.DISENGAGED
             try:
                 # read the current face_id of the humans
-                while not self.face_id:
-                    rospy.Subscriber(
-                        "/humans/persons/" + human_id + "/face_id",
-                        String,
-                        self.get_face_id_cb)
-                    rospy.loginfo(f"face_id {self.face_id}")
+                current_face_id = rospy.wait_for_message("/humans/persons/"
+                                                      + human_id + "/face_id",
+                                                      String, timeout=1)
 
                 # transform from base link to gaze_[face_id]
                 self.listener.waitForTransform(
                     self.base_link,
-                    "gaze_" + self.face_id,
+                    "gaze_" + current_face_id.data,
                     rospy.Time(0),
                     rospy.Duration(4.0))
 
                 gaze_origin, _ = self.listener.lookupTransform(
                     self.base_link,
-                    "gaze_" + self.face_id,
+                    "gaze_" + current_face_id.data,
                     rospy.Time(0))
 
                 face_distance = np.sqrt(gaze_origin[0] ** 2
@@ -160,7 +150,7 @@ class EngagementNode(object):
             except tf.Exception:
                 # here it should be transform exception
                 rospy.logwarn("Missing frame %s, skipping upload",
-                              "gaze_" + self.face_id)
+                              "gaze_" + current_face_id.data)
 
     def compute_engagement(self, human_id):
         """ Computes the engagement level of each active human
@@ -236,21 +226,28 @@ class EngagementNode(object):
 
         # each entry of active_humans is a tuple as follows
         # (human_id, rospy.Time.now(), face_distance)
+        current_face_id = None
+
         for human in self.active_humans:
             try:
                 # read the current face_id of the humans
-                rospy.Subscriber(
-                    "/humans/persons/" + human[0] + "/face_id",
-                    String,
-                    self.get_face_id_cb)
+                # rospy.Subscriber(
+                #     "/humans/persons/" + human[0] + "/face_id",
+                #     String,
+                #     self.get_face_id_cb)
+
+                current_face_id = rospy.wait_for_message("/humans/persons/"
+                                                         + human[0] + "/face_id",
+                                                         String, timeout=1)
+
                 # transform from gaze_[human_id] to base_link
                 self.listener.waitForTransform(
-                    "gaze_" + self.face_id,
+                    "gaze_" + current_face_id.data,
                     self.base_link,
                     rospy.Time(0),
                     rospy.Duration(4.0))
                 gaze_origin_inverse, _ = self.listener.lookupTransform(
-                    "gaze_" + self.face_id,
+                    "gaze_" + current_face_id.data,
                     self.base_link,
                     rospy.Time(0))
                 # check on the same vector expressed in gaze_<id> frame,
@@ -276,7 +273,7 @@ class EngagementNode(object):
             except tf.Exception:
                 # here it should be transform exception
                 rospy.logwarn("Missing frame %s, skipping upload",
-                              "gaze_" + self.face_id)
+                              "gaze_" + current_face_id.data)
 
     def send_engaged_status(self, event=None):
         """ Timer callback to publish the IdsList of the engaged humans
