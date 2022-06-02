@@ -143,14 +143,12 @@ class EngagementNode(object):
                     self.active_humans.append((human_id, rospy.Time.now(),
                                                face_distance))
 
-            except (tf.LookupException, tf.ConnectivityException,
-                    tf.ExtrapolationException):
-                continue
-
             except tf.Exception:
                 # here it should be transform exception
-                rospy.logwarn("Missing frame %s, skipping upload",
-                              "gaze_" + current_face_id.data)
+                rospy.logwarn("Unable to find a transform"
+                              " between frames %s and gaze_%s"
+                              "Can not compute active human %s",
+                              self.base_link, current_face_id.data,  human_id)
 
     def compute_engagement(self, human_id):
         """ Computes the engagement level of each active human
@@ -230,12 +228,6 @@ class EngagementNode(object):
 
         for human in self.active_humans:
             try:
-                # read the current face_id of the humans
-                # rospy.Subscriber(
-                #     "/humans/persons/" + human[0] + "/face_id",
-                #     String,
-                #     self.get_face_id_cb)
-
                 current_face_id = rospy.wait_for_message("/humans/persons/"
                                                          + human[0] + "/face_id",
                                                          String, timeout=1)
@@ -265,15 +257,12 @@ class EngagementNode(object):
 
                 self.compute_engagement(human[0])
 
-            except (tf.LookupException, tf.ConnectivityException,
-                    tf.ExtrapolationException):
-                rospy.loginfo("tf exception ".format(tf))
-                continue
-
             except tf.Exception:
                 # here it should be transform exception
-                rospy.logwarn("Missing frame %s, skipping upload",
-                              "gaze_" + current_face_id.data)
+                rospy.logwarn("Unable to find a transform"
+                              " between frames gaze_%s and %s. "
+                              "Can not compute engagement status for human %s",
+                              current_face_id.data, self.base_link, human[0])
 
     def send_engaged_status(self, event=None):
         """ Timer callback to publish the IdsList of the engaged humans
