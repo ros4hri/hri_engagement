@@ -62,10 +62,9 @@ class EngagementNode(object):
         :param gaze_distance_scale_thr: -> float
         value used to define the FoV of the agents (either a human or robot)
         """
-        self.br = CvBridge()
         self.listener = tf.TransformListener()
         # to change on the robot
-        self.base_link = robot_head_frame
+        self.reference_frame = robot_head_frame
 
         # distance threshold for considering faces
         self.distance_thr = distance_thr
@@ -132,13 +131,13 @@ class EngagementNode(object):
 
                 # transform from base link to gaze_[face_id]
                 self.listener.waitForTransform(
-                    self.base_link,
+                    self.reference_frame,
                     "gaze_" + current_face_id.data,
                     rospy.Time(0),
                     rospy.Duration(4.0))
 
                 gaze_origin, _ = self.listener.lookupTransform(
-                    self.base_link,
+                    self.reference_frame,
                     "gaze_" + current_face_id.data,
                     rospy.Time(0))
 
@@ -157,7 +156,7 @@ class EngagementNode(object):
                 rospy.logwarn("Unable to find a transform"
                               " between frames %s and gaze_%s"
                               "Can not compute active human %s",
-                              self.base_link, current_face_id.data,  human_id)
+                              self.reference_frame, current_face_id.data,  human_id)
 
     def compute_engagement(self, human_id):
         """ Computes the engagement level of each active human
@@ -241,15 +240,15 @@ class EngagementNode(object):
                                                          + human[0] + "/face_id",
                                                          String, timeout=1)
 
-                # transform from gaze_[human_id] to base_link
+                # transform from gaze_[human_id] to reference_frame
                 self.listener.waitForTransform(
                     "gaze_" + current_face_id.data,
-                    self.base_link,
+                    self.reference_frame,
                     rospy.Time(0),
                     rospy.Duration(4.0))
                 gaze_origin_inverse, _ = self.listener.lookupTransform(
                     "gaze_" + current_face_id.data,
-                    self.base_link,
+                    self.reference_frame,
                     rospy.Time(0))
                 # check on the same vector expressed in gaze_<id> frame,
                 # evaluating the length of its projection
@@ -271,7 +270,7 @@ class EngagementNode(object):
                 rospy.logwarn("Unable to find a transform"
                               " between frames gaze_%s and %s. "
                               "Can not compute engagement status for human %s",
-                              current_face_id.data, self.base_link, human[0])
+                              current_face_id.data, self.reference_frame, human[0])
 
     def send_engaged_status(self, event=None):
         """ Timer callback to publish the IdsList of the engaged humans
