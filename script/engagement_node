@@ -36,9 +36,9 @@ class EngagementNode(object):
     # active humans are those who are known, currently tracked
     and in the engagement zone
     (distance from the robot < zone distance_thr).
-    For any active human their gaze direction is computed in
-    order to classify their current engagement status. Four engagement level
-    have been defined:
+    For any active human, their gaze direction is computed in
+    order to classify their current engagement status with respect to the robot.
+    The engagement statuses in which a human can be, are the following:
     # UNKNOWN: no information is provided about the engagement level
     # DISENGAGED: the human has not looked in the direction of the robot
     # ENGAGING: the human has started to look in the direction of the robot
@@ -48,13 +48,14 @@ class EngagementNode(object):
     """
 
     def __init__(self,
-                 robot_head_frame,
+                 robot_gaze_frame,
                  engagement_status_pub_rate,
                  distance_thr=1.5,
                  gaze_distance_scale_thr=0.5):
         """
-        :param robot_head_frame: -> str
-        frame of the robot head
+        :param robot_gaze_frame: -> str
+        reference frame to compute if a human is in the field of view
+        of the robot
         :param engagement_status_pub_rate -> Int
         publishing rate of the human engagement status
         :param distance_thr: -> float
@@ -64,7 +65,7 @@ class EngagementNode(object):
         """
         self.listener = tf.TransformListener()
         # to change on the robot
-        self.reference_frame = robot_head_frame
+        self.reference_frame = robot_gaze_frame
 
         # distance threshold for considering faces
         self.distance_thr = distance_thr
@@ -295,9 +296,9 @@ class EngagementNode(object):
 
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
-    robot_head_frame = rospy.get_param("~robot_head_frame", default="head_2_link")
+    robot_gaze_frame = rospy.get_param("~robot_gaze_frame", default="head_2_link")
     engagement_status_pub_rate = rospy.get_param(param_name="~engagement_status_pub_rate", default=10)
     node = EngagementNode(
-        robot_head_frame=robot_head_frame,
+        robot_gaze_frame=robot_gaze_frame,
         engagement_status_pub_rate=engagement_status_pub_rate)
     rospy.spin()
