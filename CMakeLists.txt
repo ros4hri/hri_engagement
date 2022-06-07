@@ -5,10 +5,6 @@ find_package(catkin REQUIRED)
 
 catkin_package(
   CATKIN_DEPENDS
-  rospy
-  std_msgs
-  hri_msgs
-  geometry_msgs
   tf
 )
 
