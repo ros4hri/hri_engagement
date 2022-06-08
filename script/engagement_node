@@ -4,12 +4,16 @@ from __future__ import absolute_import
 import rospy
 from hri_msgs.msg import IdsList
 from hri_msgs.msg import EngagementLevel
-from cv_bridge import CvBridge
 from std_msgs.msg import String
-import tf
+import tf2_ros
 
 import numpy as np
 import enum
+
+# time window to store the engagement status of the person (secs)
+BUFFER_DURATION = 2
+# rate of the main node
+NODE_RATE = 30
 
 
 class EngagementStatus(enum.Enum):
@@ -18,280 +22,373 @@ class EngagementStatus(enum.Enum):
     """
     # unknown: no information is provided about the engagement level
     UNKNOWN = 0
-    # disengaged: the human has not looked in the direction of the robot
+    # disengaged: the person has not looked in the direction of the robot
     DISENGAGED = 1
-    # engaging: the human has started to look in the direction of the robot
+    # engaging: the person has started to look in the direction of the robot
     ENGAGING = 2
-    # engaged: the human is fully engaged with the robot
+    # engaged: the person is fully engaged with the robot
     ENGAGED = 3
-    # disengaging: the human has started to look away from the robot
+    # disengaging: the person has started to look away from the robot
     DISENGAGING = 4
+
+
+class Person(object):
+    """
+    Auxiliary class that given a Person identified with their person_id,
+    it publishes their engagement status on the topic:
+    /humans/persons/<human_id>/engagement_status.
+    To compute the engagement, their gaze direction is estimated with
+    respect to the robot.
+    The engagement statuses in which a person can be, are the following:
+    # UNKNOWN: no information is provided about the engagement level
+    # DISENGAGED: the person has not looked in the direction of the robot
+    # ENGAGING: the person has started to look in the direction of the robot
+    # ENGAGED: the person is fully engaged with the robot
+    # DISENGAGING: the person has started to look away from the robot
+    """
+
+    def __init__(self, person_id=None,
+                 is_registered=True,
+                 engagement_status_pub_rate=10):
+        """
+        :param person_id:-> str
+        person identifier
+        :param is_registered -> bool
+        # flag to check whether the person pub is still registered
+        :param engagement_status_pub_rate -> int
+        # frame rate of publication of the engagement status (hz)
+        """
+        self.person_id = person_id
+        # face id of the person
+        self.face_id = None
+        # flag
+        self.is_registered = is_registered
+        # buffer and listener for the tf2 transformation
+        self.buffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.buffer)
+        # to change on the robot
+        self.reference_frame = robot_gaze_frame
+        # distance threshold for considering faces (mt)
+        self.distance_thr = 1.5
+        # scale value to define the field of view of the human (mt)
+        self.fov_scale_thr = 0.3
+
+        # publisher for the engagement status of the person
+        try:
+            self.engagement_status_pub = rospy.Publisher(
+                "/humans/persons/" + self.person_id + "/engagement_status",
+                EngagementLevel,
+                queue_size=10)
+        except AttributeError:
+            rospy.logerr("cannot create a pub as "
+                         "the value of self.person_id is "
+                         .format(self.person_id))
+
+        # publish the engagement status as soon as the Person is created
+        self.engagement_status_pub.publish(EngagementLevel.UNKNOWN)
+
+        # subscriber for getting the face_id assigned of the person
+        try:
+            self.face_id_sub = rospy.Subscriber(
+                "/humans/persons/" + self.person_id + "/face_id",
+                String, self.face_id_cb)
+        except AttributeError:
+            rospy.logerr("No face id for that person")
+            return
+
+        # frame rate of the engagement_status pub (hz)
+        self.engagement_status_pub_rate = engagement_status_pub_rate
+        # number of samples used to infer the user's engagement
+        self.engagement_history_size = NODE_RATE * BUFFER_DURATION
+
+        # list in which it is stored the engagement level
+        # of dim equals to self.engagement_history_size.
+        self.person_engagement_history = list()
+
+        # current engagement level
+        self.person_current_engagement_level = EngagementLevel.UNKNOWN
+
+        # timer callback
+        self.engagement_timer_pub = rospy.Timer(rospy.Duration(
+            (1 / self.engagement_status_pub_rate)),
+            self.publish_engagement_status)
+
+    def unregister(self):
+        """
+        method that unregister the Person engagement_status_pub
+        and the face_id_sub
+        """
+        self.engagement_status_pub.unregister()
+        self.face_id_sub.unregister()
+
+    def face_id_cb(self, msg):
+        """
+        Callback function to get the face_id of the person.
+        Note, that the face_id is not persistent, and it can change as soon as a
+        face is lost. The face_id is needed to compute the distance of the robot
+        from the person as well as their engagement.
+        """
+        self.face_id = msg
+
+    def assess_engagement(self):
+        """
+        it first computes the distance between the robot and the person
+        if distance is less than self.distance_thr then the person is active,
+        and we can compute the gaze direction of the person with respect to the
+        robot. Note, this method assesses the current engagement of the person as follows:
+        if the person is looking at the robot we add +1 in the engagement_history,
+        if not we add a -1. The vector will be then used by the Person class to estimate
+        the human engagement over the BUFFER_DURATION
+        """
+
+        try:
+            # transform from base link to gaze_[face_id]
+            gaze_origin_trans = self.buffer.lookup_transform(
+                self.reference_frame,
+                "gaze_" + self.face_id.data,
+                rospy.Time(0))
+
+            face_distance = np.sqrt(gaze_origin_trans.transform.translation.x ** 2
+                                    + gaze_origin_trans.transform.translation.y ** 2
+                                    + gaze_origin_trans.transform.translation.z ** 2)
+
+            # if the distance is less than self.distance_thr
+            # we can consider that person as active and therefore
+            # compute their engagement status
+            if face_distance < self.distance_thr:
+                # transform from gaze_[human_id] to reference_frame
+                gaze_origin_inverse_trans = self.buffer.lookup_transform(
+                    "gaze_" + self.face_id.data,
+                    self.reference_frame,
+                    rospy.Time(0))
+                # check on the same vector expressed in gaze_<id> frame,
+                # evaluating the length of its projection
+                # on the XY plane.
+                gaze_distance = np.sqrt(gaze_origin_inverse_trans.transform.translation.x ** 2
+                                        + gaze_origin_inverse_trans.transform.translation.y ** 2)
+                # the person is currently engaged
+                if gaze_distance < \
+                        (self.fov_scale_thr * gaze_origin_inverse_trans.transform.translation.z):
+                    self.person_engagement_history.append(1)
+                else:
+                    # the person is currently disengaged
+                    self.person_engagement_history.append(-1)
+                self.compute_engagement()
+
+        except tf2_ros.TransformException:
+            # here it should be transform exception
+            rospy.logwarn("Unable to find a transform"
+                          " between frame {} and frame {} for person_id {}".
+                          format(self.reference_frame, self.face_id.data, self.person_id))
+
+    def compute_engagement(self):
+        """
+        Status can be "unknown", "disengaged", "engaging",
+        "engaged", "disengaging".
+        It computes the engagement level of the person averaging the values
+        stored in the person_engagement_history that has size:
+        engagement_history_size.
+        At the beginning the person status is set to "unknown"
+        """
+
+        # waiting a few frames before assessing whether a person is engaged or not
+        if len(self.person_engagement_history) \
+                < self.engagement_history_size:
+            rospy.logdebug("building buffer for person {}".format(self.person_id))
+            return
+        else:
+            # clean up the person engagement history
+            self.person_engagement_history = \
+                self.person_engagement_history[-self.engagement_history_size:]
+
+            # compute the average engagement value
+            engagement_value = sum(self.person_engagement_history
+                                   [-self.engagement_history_size:]) \
+                               / self.engagement_history_size
+
+            if self.person_current_engagement_level \
+                    == EngagementLevel.UNKNOWN:
+                self.person_current_engagement_level \
+                    = EngagementLevel.DISENGAGED
+
+            elif self.person_current_engagement_level \
+                    == EngagementLevel.DISENGAGED:
+                if 0 <= engagement_value < 1:
+                    self.person_current_engagement_level \
+                        = EngagementLevel.ENGAGING
+
+            elif self.person_current_engagement_level \
+                    == EngagementLevel.ENGAGING:
+                if -1 <= engagement_value < -0.5:
+                    self.person_current_engagement_level \
+                        = EngagementLevel.DISENGAGED
+                elif 0.0 < engagement_value <= 1.0:
+                    self.person_current_engagement_level \
+                        = EngagementLevel.ENGAGED
+
+            elif self.person_current_engagement_level \
+                    == EngagementLevel.ENGAGED:
+                if engagement_value <= 0.0:
+                    self.person_current_engagement_level \
+                        = EngagementLevel.DISENGAGING
+
+            elif self.person_current_engagement_level \
+                    == EngagementLevel.DISENGAGING:
+                if engagement_value > 0.0:
+                    self.person_current_engagement_level \
+                        = EngagementLevel.ENGAGED
+                elif engagement_value <= 0.0:
+                    self.person_current_engagement_level \
+                        = EngagementLevel.DISENGAGED
+
+            rospy.loginfo_throttle_identical(10,
+                                             "Engagement status for {} is: {}".format(
+                                                 self.person_id,
+                                                 EngagementStatus(
+                                                     self.person_current_engagement_level)))
+
+    def publish_engagement_status(self, event=None):
+        """
+        Timer callback to publish the engagement_status of the person
+        according to the timer callback set in the constructor
+        """
+
+        # we check whether the person id exists
+        if self.person_id is not None and self.is_registered:
+            engagement_msg = EngagementLevel()
+            engagement_msg.level = self.person_current_engagement_level
+            self.engagement_status_pub.publish(engagement_msg)
+
+    def run(self):
+        """
+        it calls the engaged_person method that computes the
+        engagement status and the callback that publishes the
+        status on the topic /humans/persons/<human_id>/engagement_status
+        """
+
+        # if we do not have the face id of the person we just return
+        if self.face_id is None:
+            rospy.loginfo_throttle_identical(1,
+                                             "there is no face_id for the person {}"
+                                             .format(self.person_id))
+            return
+        else:
+            self.assess_engagement()
+            self.compute_engagement()
 
 
 class EngagementNode(object):
     """
-    This node detects the engagement status of the active humans and
-    publish it on /humans/persons/<human_id>/engagement_status.
-    # tracked humans are those who are known and currently tracked
-    # active humans are those who are known, currently tracked
-    and in the engagement zone
-    (distance from the robot < zone distance_thr).
-    For any active human, their gaze direction is computed in
-    order to classify their current engagement status with respect to the robot.
-    The engagement statuses in which a human can be, are the following:
-    # UNKNOWN: no information is provided about the engagement level
-    # DISENGAGED: the human has not looked in the direction of the robot
-    # ENGAGING: the human has started to look in the direction of the robot
-    # ENGAGED: the human is fully engaged with the robot
-    # DISENGAGING: the human has started to look away from the robot
-
+    This node detects the persons who are in the field of view of the
+    robot's camera (tracked persons).
+    Among those persons, it selects those who are active, that is, those who
+    are currently in the engagement zone (distance from the robot <
+    zone distance_thr).
+    For each of the active persons, it creates a Person object from which
+    the engagement status is computed and published in a topic.
     """
 
     def __init__(self,
                  robot_gaze_frame,
                  engagement_status_pub_rate,
                  distance_thr=1.5,
-                 gaze_distance_scale_thr=0.5):
+                 fov_scale_thr=0.5):
         """
         :param robot_gaze_frame: -> str
         reference frame to compute if a human is in the field of view
         of the robot
-        :param engagement_status_pub_rate -> Int
+        :param engagement_status_pub_rate -> int
         publishing rate of the human engagement status
         :param distance_thr: -> float
         max distance used by the robot to look for active users
-        :param gaze_distance_scale_thr: -> float
-        value used to define the FoV of the agents (either a human or robot)
+        :param fov_scale_thr: -> float
+        value to scale up the FoV of the humans expressed in meters
         """
-        self.listener = tf.TransformListener()
+        self.buffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.buffer)
         # to change on the robot
         self.reference_frame = robot_gaze_frame
 
         # distance threshold for considering faces
         self.distance_thr = distance_thr
-        # Scaling factor for the gaze distance
-        self.gaze_distance_scale_thr = gaze_distance_scale_thr
+        # scale value to define the field of view of the human (meters)
+        self.fov_scale_thr = fov_scale_thr
 
-        # frame rate of the node
-        self.frame_rate = 30
-        # time for engagement history
-        self.buffer_time = 2
-        # number of samples used to infer the user's engagement
-        self.engagement_history_size = self.frame_rate * self.buffer_time
-
-        # engagement level of a human.
-        # Key:face_id, Value: list, i.e., engagement_buffer
-        self.humans_engagement_history = dict()
-        # current engagement status of the active humans.
-        # Key:face_id, Value: e.g., "engaged",
-        self.humans_current_engagement_level = dict()
-
-        # those humans who are actively detected
-        self.tracked_humans_in_the_scene = IdsList()
+        # those persons who are actively detected
+        self.tracked_persons_in_the_scene = IdsList()
         # those humans who are actively detected and at a distance
-        # less than self.distance_thr
-        self.active_humans = list()
-
+        # less than self.distance_thr, person_id:Person_instance
+        self.active_persons = dict()
         # for the current version in order to compute engagement
         # we need to get the transformation from the gaze_id published
         # as tf by the hri_face_detection
         self.face_id = ""
 
-        # timers callback
-        self.rate = 30
-        self.timer_run = rospy.Timer(rospy.Duration(1 / self.rate), self.run)
-        self.timer_pub = rospy.Timer(rospy.Duration(1 / engagement_status_pub_rate),
-                                     self.send_engaged_status)
+        try:
+            self.humans_tracked_id_sub = \
+                rospy.Subscriber("/humans/persons/tracked",
+                                 IdsList,
+                                 self.get_tracked_humans_cb,
+                                 queue_size=10)
+        except AttributeError:
+            rospy.logerr("No tracked persons")
+            return
 
-    def tracked_human_list_cb(self, msg):
-        """ Callback that updates the detected persons
-             :param msg: -> IdList
-             ids and header of the tracked humans """
-        self.tracked_humans_in_the_scene = msg
+        # frame rate of the node (hz)
+        self.loop_rate = rospy.Rate(NODE_RATE)
 
+        # pub rate of the engagement status of a Person object
+        self.engagement_status_pub_rate = engagement_status_pub_rate
 
-    def get_active_humans(self):
-        """ Checking for tracked persons closer than self.distance_thr"""
+        # Person object
+        self.person = None
 
-        self.tracked_humans_in_the_scene = rospy.wait_for_message("/humans/persons/tracked",
-                                                                  IdsList, timeout=1)
+    def get_tracked_humans_cb(self, msg):
+        """
+        Callback that updates the list of the detected persons
+        :param msg: -> IdList
+        ids and header of the tracked persons
+        """
+        self.tracked_persons_in_the_scene = msg
 
-        current_face_id = None
-
-        for human_id in self.tracked_humans_in_the_scene.ids:
-            # for each active human we initialise the engagement history vector
-            if human_id not in self.humans_engagement_history:
-                self.humans_engagement_history[human_id] = [0]
-                self.humans_current_engagement_level[human_id] \
-                    = EngagementLevel.DISENGAGED
-            try:
-                # read the current face_id of the humans
-                current_face_id = rospy.wait_for_message("/humans/persons/"
-                                                      + human_id + "/face_id",
-                                                      String, timeout=1)
-
-                # transform from base link to gaze_[face_id]
-                self.listener.waitForTransform(
-                    self.reference_frame,
-                    "gaze_" + current_face_id.data,
-                    rospy.Time(0),
-                    rospy.Duration(4.0))
-
-                gaze_origin, _ = self.listener.lookupTransform(
-                    self.reference_frame,
-                    "gaze_" + current_face_id.data,
-                    rospy.Time(0))
-
-                face_distance = np.sqrt(gaze_origin[0] ** 2
-                                        + gaze_origin[1] ** 2
-                                        + gaze_origin[2] ** 2)
-
-                if face_distance < self.distance_thr and \
-                        human_id not in list(map(lambda x: x[0],
-                                                 self.active_humans)):
-                    self.active_humans.append((human_id, rospy.Time.now(),
-                                               face_distance))
-
-            except tf.Exception:
-                # here it should be transform exception
-                rospy.logwarn("Unable to find a transform"
-                              " between frames %s and gaze_%s"
-                              "Can not compute active human %s",
-                              self.reference_frame, current_face_id.data,  human_id)
-
-    def compute_engagement(self, human_id):
-        """ Computes the engagement level of each active human
-        the status of each human can be "unknown", "disengaged", "engaging",
-        "engaged", "disengaging", depending on the average value stored in
-        the engagement_buffer for each human.
-        At the beginning all the active humans are disengaged
-
-        :param human_id :-> str
-        the id of the human for whom we check the engagement status
+    def get_tracked_humans(self):
+        """
+        Checking for tracked persons closer than self.distance_thr
         """
 
-        # waiting a few frames before assessing whether a person is engaged or not
-        if len(self.humans_engagement_history[human_id]) \
-                < self.engagement_history_size:
-            rospy.loginfo("building buffer for human {}".format(human_id))
-        else:
-            # clean up the buffer
-            self.humans_engagement_history[human_id] = \
-                self.humans_engagement_history[human_id][-self.engagement_history_size:]
+        # check if the current active persons are
+        # still active otherwise remove them
+        if self.active_persons:
+            for active_human in list(self.active_persons.keys()):
+                if active_human not in \
+                        self.tracked_persons_in_the_scene.ids:
+                    self.active_persons[active_human].unregister()
+                    self.active_persons[active_human].is_registered = False
+                    self.active_persons[active_human].\
+                        person_current_engagement_level = EngagementLevel.UNKNOWN
+                    del self.active_persons[active_human]
 
-            # compute the average engagement value
-            engagement_value = sum(self.humans_engagement_history[human_id]
-                                   [-self.engagement_history_size:]) \
-                               / self.engagement_history_size
+        # check whether the active persons are new
+        # if so create a new instance of a Person
+        for person_id in self.tracked_persons_in_the_scene.ids:
+            active_persons_id = list(self.active_persons.keys())
 
-            if self.humans_current_engagement_level[human_id] \
-                    == EngagementLevel.DISENGAGED:
-                if -1 <= engagement_value < 0:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.DISENGAGED
-                else:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.ENGAGING
+            if person_id in active_persons_id:
+                self.active_persons[person_id].run()
+            else:
+                self.person = Person(person_id=person_id,
+                                     is_registered=True,
+                                     engagement_status_pub_rate=
+                                     self.engagement_status_pub_rate)
+                self.active_persons[person_id] = self.person
+                self.person.run()
 
-            elif self.humans_current_engagement_level[human_id] \
-                    == EngagementLevel.ENGAGING:
-                if -1 <= engagement_value < -0.5:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.DISENGAGED
-                elif -0.5 <= engagement_value < 0.0:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.ENGAGING
-                else:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.ENGAGED
-
-            elif self.humans_current_engagement_level[human_id] \
-                    == EngagementLevel.ENGAGED:
-                if engagement_value > 0.0:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.ENGAGED
-                elif engagement_value <= 0.0:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.DISENGAGING
-
-            elif self.humans_current_engagement_level[human_id] \
-                    == EngagementLevel.DISENGAGING:
-                if engagement_value > 0.0:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.ENGAGED
-                elif engagement_value <= 0.0:
-                    self.humans_current_engagement_level[human_id] \
-                        = EngagementLevel.DISENGAGED
-
-        rospy.loginfo("Engagement status for {} is: {}".format(
-            human_id,
-            EngagementStatus(self.humans_current_engagement_level[human_id])))
-
-    def get_engaged_humans(self):
-        """ it checks for humans who are active and updates
-        their engagement status """
-
-        # each entry of active_humans is a tuple as follows
-        # (human_id, rospy.Time.now(), face_distance)
-        current_face_id = None
-
-        for human in self.active_humans:
-            try:
-                current_face_id = rospy.wait_for_message("/humans/persons/"
-                                                         + human[0] + "/face_id",
-                                                         String, timeout=1)
-
-                # transform from gaze_[human_id] to reference_frame
-                self.listener.waitForTransform(
-                    "gaze_" + current_face_id.data,
-                    self.reference_frame,
-                    rospy.Time(0),
-                    rospy.Duration(4.0))
-                gaze_origin_inverse, _ = self.listener.lookupTransform(
-                    "gaze_" + current_face_id.data,
-                    self.reference_frame,
-                    rospy.Time(0))
-                # check on the same vector expressed in gaze_<id> frame,
-                # evaluating the length of its projection
-                # on the XY plane.
-                gaze_distance = np.sqrt(gaze_origin_inverse[0] ** 2
-                                        + gaze_origin_inverse[1] ** 2)
-                # the human is currently engaged
-                if gaze_distance < \
-                        (self.gaze_distance_scale_thr * gaze_origin_inverse[2]):
-                    self.humans_engagement_history[human[0]].append(1)
-                else:
-                    # the human is currently disengaged
-                    self.humans_engagement_history[human[0]].append(-1)
-
-                self.compute_engagement(human[0])
-
-            except tf.Exception:
-                # here it should be transform exception
-                rospy.logwarn("Unable to find a transform"
-                              " between frames gaze_%s and %s. "
-                              "Can not compute engagement status for human %s",
-                              current_face_id.data, self.reference_frame, human[0])
-
-    def send_engaged_status(self, event=None):
-        """ Timer callback to publish the IdsList of the engaged humans
-        according to timer set in the constructor """
-
-        for human_id, engagement_status in \
-                self.humans_current_engagement_level.items():
-            engaged_humans_pub = rospy.Publisher(
-                "/humans/persons/" + human_id + "/engagement_status",
-                EngagementLevel,
-                queue_size=10)
-            engagement_msg = EngagementLevel()
-            engagement_msg.level = engagement_status
-            engaged_humans_pub.publish(engagement_msg)
-
-    def run(self, event=None):
+    def run(self):
         """ Timer callback to loop for the active humans and compute
          their engagement status according to timer set in the constructor """
-        self.get_active_humans()
-        self.get_engaged_humans()
+        while not rospy.is_shutdown():
+            self.get_tracked_humans()
+            self.loop_rate.sleep()
 
 
 if __name__ == "__main__":
@@ -301,4 +398,5 @@ if __name__ == "__main__":
     node = EngagementNode(
         robot_gaze_frame=robot_gaze_frame,
         engagement_status_pub_rate=engagement_status_pub_rate)
-    rospy.spin()
+    node.run()
+
