@@ -1,11 +1,11 @@
 <launch>
 
-    <arg name="robot_head_frame"/>
-    <arg name="semaphore_debug" default="False"/>
+    <arg name="robot_gaze_frame" default="/sellion_link" />
+    <arg name="engagement_status_pub_rate" default="10" />
 
     <node pkg="hri_engagement" name="engagement_node" type="engagement_node" output="screen">
-        <param name="robot_head_frame" value="$(arg robot_head_frame)"/>
-        <param name="semaphore_debug" value="$(arg semaphore_debug)"/>
+        <param name="robot_gaze_frame" value="$(arg robot_gaze_frame)"/>
+        <param name="engagement_status_pub_rate" value="$(arg engagement_status_pub_rate)"/>
     </node>
 
 </launch>
