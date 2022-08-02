@@ -2,8 +2,8 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.1.0 (2022-08-02)
+------------------
 * Add ReadMe
 * remove engagement callback rate in params
 * [DEBUG] duplicate call to method compute_engagement
