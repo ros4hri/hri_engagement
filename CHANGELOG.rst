@@ -1,0 +1,63 @@
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Changelog for package hri_engagement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+0.1.0 (2022-08-02)
+------------------
+* Add ReadMe
+* remove engagement callback rate in params
+* [DEBUG] duplicate call to method compute_engagement
+* code refactoring - improving code structure
+  - add sellion_link as robot_gaze_frame
+  - add timer to track tf availability (10 secs)
+  - set engagement to unknown when person not active
+  - remove timer callback for engagement status
+* code refactoring - design new class structure
+  - define an aux Person class that computes the engagement_status
+  and publish it on a topic.
+  - edit EngagementNode class that now only checks for the active
+  persons and for each of them initialises an instance of the class Person.
+  - migrate code from tf to tf2
+  - add var is_registered to Person
+  - simplify compute_engagement method
+* [feat] engagement node working with >= 1 human
+  the hri_person_manager recognises a human and assign
+  them a unique id. A dedicated callback has been introduced to
+  publish the engagement status at a given frame/rate.
+* [feat] engagement node working with 1 human
+  It publishes the status of an active human as:
+  ['disengaged', 'disengaging', 'engaging', 'engaged']
+  based on their previous status history
+* Changed reference frame for resting head position
+* Publishing PoseStamped on /look_to_wildcard
+  /look_to_wildcard topic expects PoseStamped object, not
+  PointStamped. Removed the topic latcher since it is no more
+  required
+* Reduced publishing rate on /look_at
+  The node now publishes a PointStamped object on /look_at only if:
+  -- The engaged face has moved more than a specific threshold value
+  from the last position the eyes have moved for
+  -- The state machine goes from state 2 (Retrieving engagement) to
+  state 0 (No engagement). In this case the robot will go back
+  looking in front of it and eyes need to be repositioned.
+* Fixing attention geometry and new debug tools
+  -- Debugged formula in the cone-of-attention section
+  -- It is now possible to visualize the current state machine
+  value as a semaphore in rviz
+* Publishing engagement information for head turning
+  Through topic_tools relay, the information about the point the
+  robot should look at gets published also on the /look_at_wildcard
+  topic, involved in head turning.
+* introduced robot head frame parameter
+* code refactoring
+  -- removed comments and unused dependencies from package.xml
+  -- removed comments and unused dependencies from CMakeLists.txt
+* fixed active users publishing
+  -- added function update_active_users to track all the ids that
+  have been active at least once in the last time_thr sec
+  -- code refactoring
+* code refactoring
+* Modifying the structure representing the close faces
+* publishing ids of the active users
+* Initial commit
+* Contributors: Antonio Andriella, Séverin Lemaignan, Lorenzo Ferrini

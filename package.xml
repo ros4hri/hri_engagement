@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>hri_engagement</name>
-  <version>1.2.0</version>
+  <version>0.1.0</version>
   <description>Engagement detection for ROS4HRI</description>
 
   <maintainer email="antonio.andriella@pal-robotics.com">Antonio Andriella</maintainer>

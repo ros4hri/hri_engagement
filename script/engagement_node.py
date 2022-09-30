@@ -170,8 +170,7 @@ class Person(object):
                     self.person_engagement_history.append(1)
                 else:
                     # the person is currently disengaged
-                    self.person_engagement_history.append(-1)
-                self.compute_engagement()
+                    self.person_engagement_history.append(-1)      
                 # time of the last successful tf
                 self.start_time_from_tf = rospy.Time.now()
 

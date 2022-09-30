@@ -2,10 +2,8 @@
 
     <arg name="robot_gaze_frame" default="/sellion_link" />
     <arg name="engagement_status_pub_rate" default="10" />
-
     <node pkg="hri_engagement" name="engagement_node" type="engagement_node.py" output="screen">
         <param name="robot_gaze_frame" value="$(arg robot_gaze_frame)"/>
-        <param name="engagement_status_pub_rate" value="$(arg engagement_status_pub_rate)"/>
     </node>
 
 </launch>
