@@ -8,7 +8,7 @@ catkin_package(
   tf
 )
 
-catkin_install_python(PROGRAMS script/engagement_node 
+catkin_install_python(PROGRAMS script/engagement_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
