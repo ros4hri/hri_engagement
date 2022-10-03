@@ -6,15 +6,19 @@ from hri_msgs.msg import IdsList
 from hri_msgs.msg import EngagementLevel
 from std_msgs.msg import String
 import tf2_ros
+from tf import transformations
 
 import numpy as np
 import math
 import enum
 
 # time window to store the engagement status of the person (secs)
-BUFFER_DURATION = 2
+BUFFER_DURATION = 4  # secs
 # rate of the main node
-NODE_RATE = 30
+NODE_RATE = 20
+
+# field of 'attention' of a person
+FOV = 60.0 * math.pi / 180
 
 
 class EngagementStatus(enum.Enum):
@@ -49,13 +53,17 @@ class Person(object):
     # DISENGAGING: the person has started to look away from the robot
     """
 
-    def __init__(self, person_id=None, robot_gaze_frame="sellion_link"):
+    def __init__(
+        self, person_id, robot_gaze_frame: str, visual_social_engagement_thr: float
+    ):
         """
         :param person_id:-> str
         person identifier flag to check whether the person pub
         is still registered
         :param robot_gaze_frame:-> str
         reference frame for the robot
+        :param visual_social_engagement_thr: -> float
+        visual social engagement threshold to be considered as 'engaging' with the robot
 
         """
         self.person_id = person_id
@@ -68,10 +76,9 @@ class Person(object):
         self.listener = tf2_ros.TransformListener(self.buffer)
         # to change on the robot
         self.reference_frame = robot_gaze_frame
-        # distance threshold for considering faces (mt)
-        self.distance_thr = 1.5
-        # scale value to define the field of view of the human (mt)
-        self.fov_scale_thr = 0.3
+
+        self.visual_social_engagement_thr = visual_social_engagement_thr
+
         # time vars for computing the tf transform availability
         self.current_time_from_tf = rospy.Time.now()
         self.start_time_from_tf = rospy.Time.now()
@@ -126,74 +133,125 @@ class Person(object):
         face is lost. The face_id is needed to compute the distance of the robot
         from the person as well as their engagement with respect to the robot.
         """
-        self.face_id = msg
+        self.face_id = msg.data
+
+    def distance(self, t):
+        return math.sqrt(
+            t.translation.x ** 2 + t.translation.y ** 2 + t.translation.z ** 2
+        )
 
     def assess_engagement(self):
         """
-        it first computes the distance between the robot and the person
-        if distance is less than self.distance_thr then the person is active,
-        and we can compute the gaze direction of the person with respect to the
-        robot. Note, this method assesses the current engagement of the person as follows:
-        if the person is looking at the robot we add +1 in the engagement_history,
-        if not we add a -1. The vector will be then used by the Person class to estimate
-        the human engagement over the BUFFER_DURATION
+        Computes the current 'visual social engagement' metric as defined in
+        "Measuring Visual Social Engagement from Proxemics and Gaze" (by Webb
+        and Lemaignan).
+
+        If the person's engagement metric is above
+        visual_social_engagement_thr, we add +1 in the engagement_history, if
+        not we add a -1. The vector will be then used by the Person class to
+        estimate the human engagement over the BUFFER_DURATION
+
         """
 
+        gaze_frame = "gaze_" + self.face_id
+
         try:
-            # transform from base link to gaze_[face_id]
-            gaze_origin_trans = self.buffer.lookup_transform(
-                self.reference_frame,
-                "gaze_" + self.face_id.data,
-                rospy.Time(0))
-
-            face_distance = np.sqrt(gaze_origin_trans.transform.translation.x ** 2
-                                    + gaze_origin_trans.transform.translation.y ** 2
-                                    + gaze_origin_trans.transform.translation.z ** 2)
-
-            # if the distance is less than self.distance_thr
-            # we can consider that person as active and therefore
-            # compute their engagement status
-            if face_distance < self.distance_thr:
-                # transform from gaze_[human_id] to reference_frame
-                gaze_origin_inverse_trans = self.buffer.lookup_transform(
-                    "gaze_" + self.face_id.data,
-                    self.reference_frame,
-                    rospy.Time(0))
-                # check on the same vector expressed in gaze_<id> frame,
-                # evaluating the length of its projection
-                # on the XY plane.
-                gaze_distance = np.sqrt(gaze_origin_inverse_trans.
-                                        transform.translation.x ** 2
-                                        + gaze_origin_inverse_trans.
-                                        transform.translation.y ** 2)
-                # the person is currently engaged
-                if gaze_distance < \
-                        (self.fov_scale_thr * gaze_origin_inverse_trans.
-                                transform.translation.z):
-                    self.person_engagement_history.append(1)
-                else:
-                    # the person is currently disengaged
-                    self.person_engagement_history.append(-1)      
-                # time of the last successful tf
-                self.start_time_from_tf = rospy.Time.now()
+            # compute the robot 'viewed' from the person's gaze (gaze_[face_id])
+            origin_gaze_trans = self.buffer.lookup_transform(
+                gaze_frame, self.reference_frame, rospy.Time(0)
+            )
 
         except tf2_ros.TransformException:
-            rospy.logwarn("Unable to find a transform"
-                          " between frame {} and frame {} "
-                          "for person_id {}".
-                          format(self.reference_frame,
-                                 self.face_id.data, self.person_id))
-            self.current_time_from_tf = (rospy.Time.now()
-                                         - self.start_time_from_tf).to_sec()
+            rospy.logwarn(
+                "Unable to find a transform"
+                " between frame {} and frame {} "
+                "for person_id {}".format(
+                    gaze_frame, self.reference_frame, self.person_id
+                )
+            )
+            self.current_time_from_tf = (
+                rospy.Time.now() - self.start_time_from_tf
+            ).to_sec()
+
             # if the tf is not available for more than timeout_tf secs
             # then set the engagement status of that person to UNKNOWN
             if self.current_time_from_tf >= self.timeout_tf:
-                rospy.logwarn("Timeout. Set the EngagementLevel for person"
-                              " {} to UNKNOWN".format(self.person_id))
-                self.person_current_engagement_level \
-                    = EngagementLevel.UNKNOWN
+                rospy.logwarn(
+                    "Timeout. Set the EngagementLevel for person"
+                    " {} to UNKNOWN".format(self.person_id)
+                )
+                self.person_current_engagement_level = EngagementLevel.UNKNOWN
                 self.publish_engagement_status()
                 self.start_time_from_tf = rospy.Time.now()
+
+            return
+
+        # computation of Visual Social Engagement, following "Measuring Visual
+        # Social Engagement from Proxemics and Gaze" by Webb et Lemaignan
+
+        # first, compute the inverse transformation
+        trans = [
+            origin_gaze_trans.transform.translation.x,
+            origin_gaze_trans.transform.translation.y,
+            origin_gaze_trans.transform.translation.z,
+        ]
+
+        rot = [
+            origin_gaze_trans.transform.rotation.x,
+            origin_gaze_trans.transform.rotation.y,
+            origin_gaze_trans.transform.rotation.z,
+            origin_gaze_trans.transform.rotation.w,
+        ]
+        transform = transformations.concatenate_matrices(
+            transformations.translation_matrix(trans),
+            transformations.quaternion_matrix(rot),
+        )
+        inversed_transform = transformations.inverse_matrix(transform)
+        inverse_translation = transformations.translation_from_matrix(
+            inversed_transform
+        )
+
+        # next, compute the measure of visual social engagement
+
+        # [in the following, A denotes the person and B denotes the robot]
+
+        d_AB = self.distance(origin_gaze_trans.transform)
+
+        ## gaze_AB
+        # gaze_AB measures how 'close' B is from the optical axis of A
+
+        # optical frame convention -> change coordinates to match those used in
+        # paper above
+        xB = origin_gaze_trans.transform.translation.z
+        yB = origin_gaze_trans.transform.translation.x
+        zB = origin_gaze_trans.transform.translation.y
+
+        gaze_AB = 0.0
+        if xB > 0:
+            gaze_AB = max(0, 1 - (math.sqrt(yB ** 2 + zB ** 2) / (math.tan(FOV) * xB)))
+
+        # gaze_BA measures how 'close' A is from the optical axis of B
+        xA = inverse_translation[2]
+        yA = inverse_translation[0]
+        zA = inverse_translation[1]
+
+        gaze_BA = 0.0
+        if xA > 0:
+            gaze_BA = max(0, 1 - (math.sqrt(yA ** 2 + zA ** 2) / (math.tan(FOV) * xA)))
+
+        M_AB = gaze_AB * gaze_BA
+
+        S_AB = min(1, M_AB / d_AB)
+        # rospy.loginfo("S_AB: %s" % S_AB)
+
+        if S_AB > self.visual_social_engagement_thr:
+            self.person_engagement_history.append(1)
+        else:
+            # the person is currently disengaged
+            self.person_engagement_history.append(-1)
+
+        # time of the last successful tf
+        self.start_time_from_tf = rospy.Time.now()
 
     def compute_engagement(self):
         """
@@ -206,54 +264,45 @@ class Person(object):
         """
 
         # waiting a few frames before assessing whether a person is engaged or not
-        if len(self.person_engagement_history) \
-                < self.engagement_history_size:
+        if len(self.person_engagement_history) < self.engagement_history_size:
             rospy.logdebug("building buffer for person {}".format(self.person_id))
             return
         else:
             # clean up the person engagement history
-            self.person_engagement_history = \
-                self.person_engagement_history[-self.engagement_history_size:]
+            self.person_engagement_history = self.person_engagement_history[
+                -self.engagement_history_size :
+            ]
 
             # compute the average engagement value
-            engagement_value = sum(self.person_engagement_history
-                                   [-self.engagement_history_size:]) \
-                               / self.engagement_history_size
+            engagement_value = (
+                sum(self.person_engagement_history) / self.engagement_history_size
+            )
 
-            if self.person_current_engagement_level \
-                    == EngagementLevel.UNKNOWN:
-                self.person_current_engagement_level \
-                    = EngagementLevel.DISENGAGED
+            # rospy.loginfo("History: %s" % self.person_engagement_history)
+            # rospy.loginfo("Mean: %s" % engagement_value)
 
-            elif self.person_current_engagement_level \
-                    == EngagementLevel.DISENGAGED:
+            if self.person_current_engagement_level == EngagementLevel.UNKNOWN:
+                self.person_current_engagement_level = EngagementLevel.DISENGAGED
+
+            elif self.person_current_engagement_level == EngagementLevel.DISENGAGED:
                 if 0 <= engagement_value < 1:
-                    self.person_current_engagement_level \
-                        = EngagementLevel.ENGAGING
+                    self.person_current_engagement_level = EngagementLevel.ENGAGING
 
-            elif self.person_current_engagement_level \
-                    == EngagementLevel.ENGAGING:
+            elif self.person_current_engagement_level == EngagementLevel.ENGAGING:
                 if -1 <= engagement_value < -0.5:
-                    self.person_current_engagement_level \
-                        = EngagementLevel.DISENGAGED
-                elif 0.0 < engagement_value <= 1.0:
-                    self.person_current_engagement_level \
-                        = EngagementLevel.ENGAGED
+                    self.person_current_engagement_level = EngagementLevel.DISENGAGED
+                elif 0.5 < engagement_value <= 1.0:
+                    self.person_current_engagement_level = EngagementLevel.ENGAGED
 
-            elif self.person_current_engagement_level \
-                    == EngagementLevel.ENGAGED:
-                if engagement_value <= 0.0:
-                    self.person_current_engagement_level \
-                        = EngagementLevel.DISENGAGING
+            elif self.person_current_engagement_level == EngagementLevel.ENGAGED:
+                if engagement_value <= 0.5:
+                    self.person_current_engagement_level = EngagementLevel.DISENGAGING
 
-            elif self.person_current_engagement_level \
-                    == EngagementLevel.DISENGAGING:
-                if engagement_value > 0.0:
-                    self.person_current_engagement_level \
-                        = EngagementLevel.ENGAGED
+            elif self.person_current_engagement_level == EngagementLevel.DISENGAGING:
+                if engagement_value > 0.5:
+                    self.person_current_engagement_level = EngagementLevel.ENGAGED
                 elif engagement_value <= 0.0:
-                    self.person_current_engagement_level \
-                        = EngagementLevel.DISENGAGED
+                    self.person_current_engagement_level = EngagementLevel.DISENGAGED
 
     def publish_engagement_status(self):
         """
@@ -297,52 +346,44 @@ class EngagementNode(object):
     """
     This node detects the persons who are in the field of view of the
     robot's camera (tracked persons).
-    Among those persons, it selects those who are active, that is, those who
-    are currently in the engagement zone (distance from the robot <
-    zone distance_thr).
+    Among those persons, it selects those who are active, that is, those whose
+    visual social engagement metric (as defined in "Measuring Visual Social
+    Engagement from Proxemics and Gaze" by Webb and Lemaignan) is above 0.5.
+
     For each of the active persons, it creates a Person object from which
     the engagement status is computed and published in a topic.
     """
 
-    def __init__(self,
-                 robot_gaze_frame,
-                 distance_thr=1.5,
-                 fov_scale_thr=0.5):
+    def __init__(
+        self, robot_gaze_frame: str, visual_social_engagement_thr: float = 0.5
+    ):
         """
         :param robot_gaze_frame: -> str
         reference frame to compute if a human is in the field of view
         of the robot
-        :param distance_thr: -> float
-        max distance used by the robot to look for active users
-        :param fov_scale_thr: -> float
-        value to scale up the FoV of the humans expressed in meters
+        :param visual_social_engagement_thr: -> float
+        visual social engagement threshold to be considered as 'engaging' with the robot
         """
         self.buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.buffer)
         # to change on the robot
         self.reference_frame = robot_gaze_frame
 
-        # distance threshold for considering faces
-        self.distance_thr = distance_thr
-        # scale value to define the field of view of the human (meters)
-        self.fov_scale_thr = fov_scale_thr
+        # visual social engagement threshold
+        self.visual_social_engagement_thr = visual_social_engagement_thr
 
         # those persons who are actively detected
         self.tracked_persons_in_the_scene = IdsList()
-        # those humans who are actively detected and at a distance
-        # less than self.distance_thr, person_id:Person_instance
+        # those humans who are actively detected and are considered as 'engaged'
         self.active_persons = dict()
-        # for the current version in order to compute engagement
-        # we need to get the transformation from the gaze_id published
-        # as tf by the hri_face_detection
-        self.face_id = ""
 
         try:
-            self.humans_tracked_id_sub = \
-                rospy.Subscriber("/humans/persons/tracked",
-                                 IdsList,
-                                 self.get_tracked_humans_cb,
-                                 queue_size=10)
+            self.humans_tracked_id_sub = rospy.Subscriber(
+                "/humans/persons/tracked",
+                IdsList,
+                self.get_tracked_humans_cb,
+                queue_size=10,
+            )
         except AttributeError:
             rospy.logerr("No tracked persons")
             return
