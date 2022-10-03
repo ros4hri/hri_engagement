@@ -8,6 +8,7 @@ from std_msgs.msg import String
 import tf2_ros
 
 import numpy as np
+import math
 import enum
 
 # time window to store the engagement status of the person (secs)
@@ -20,6 +21,7 @@ class EngagementStatus(enum.Enum):
     """
     Auxiliary class to print in a more intuitive way the engagement status
     """
+
     # unknown: no information is provided about the engagement level
     UNKNOWN = 0
     # disengaged: the person has not looked in the direction of the robot
@@ -81,22 +83,20 @@ class Person(object):
             self.engagement_status_pub = rospy.Publisher(
                 "/humans/persons/" + self.person_id + "/engagement_status",
                 EngagementLevel,
-                queue_size=10)
+                queue_size=10,
+            )
         except AttributeError:
-            rospy.logerr("cannot create a pub as "
-                         "the value of self.person_id is "
-                         .format(self.person_id))
-
-
+            rospy.logerr(
+                "cannot create a pub as "
+                "the value of self.person_id is ".format(self.person_id)
+            )
 
         # subscriber for getting the face_id assigned of the person
-        try:
-            self.face_id_sub = rospy.Subscriber(
-                "/humans/persons/" + self.person_id + "/face_id",
-                String, self.face_id_cb)
-        except AttributeError:
-            rospy.logerr("No face id for that person")
-            return
+        self.face_id_sub = rospy.Subscriber(
+            "/humans/persons/" + self.person_id + "/face_id",
+            String,
+            self.face_id_cb,
+        )
 
         # number of samples used to infer the user's engagement
         self.engagement_history_size = NODE_RATE * BUFFER_DURATION
@@ -266,11 +266,13 @@ class Person(object):
             self.engagement_status_pub.publish(engagement_msg)
             # publish the message only if it is different
             # or if is the same after 10 secs
-            rospy.loginfo_throttle_identical(10,
-                                             "Engagement status for {} is: {}".format(
-                                                 self.person_id,
-                                                 EngagementStatus(
-                                                     self.person_current_engagement_level)))
+            rospy.loginfo_throttle_identical(
+                10,
+                "Engagement status for {} is: {}".format(
+                    self.person_id,
+                    EngagementStatus(self.person_current_engagement_level),
+                ),
+            )
 
     def run(self):
         """
@@ -280,10 +282,10 @@ class Person(object):
         """
 
         # if we do not have the face id of the person we just return
-        if self.face_id is None:
-            rospy.loginfo_throttle_identical(1,
-                                             "there is no face_id for the person {}"
-                                             .format(self.person_id))
+        if not self.face_id:
+            rospy.loginfo_throttle_identical(
+                1, "there is no face_id for the person {}".format(self.person_id)
+            )
             return
         else:
             self.assess_engagement()
@@ -360,18 +362,15 @@ class EngagementNode(object):
         self.tracked_persons_in_the_scene = msg
 
     def get_tracked_humans(self):
-        """
-        Checking for tracked persons closer than self.distance_thr
-        """
 
         # check if the current active persons are
         # still active otherwise: unregister them and remove from the dict
         if self.active_persons:
             for active_human in list(self.active_persons.keys()):
-                if active_human not in \
-                        self.tracked_persons_in_the_scene.ids:
-                    self.active_persons[active_human]. \
-                        person_current_engagement_level = EngagementLevel.UNKNOWN
+                if active_human not in self.tracked_persons_in_the_scene.ids:
+                    self.active_persons[
+                        active_human
+                    ].person_current_engagement_level = EngagementLevel.UNKNOWN
                     self.active_persons[active_human].publish_engagement_status()
                     self.active_persons[active_human].unregister()
                     del self.active_persons[active_human]
@@ -386,13 +385,17 @@ class EngagementNode(object):
             if person_id in active_persons_id:
                 self.active_persons[person_id].run()
             else:
-                self.person = Person(person_id=person_id, robot_gaze_frame=self.reference_frame)
+                self.person = Person(
+                    person_id=person_id,
+                    robot_gaze_frame=self.reference_frame,
+                    visual_social_engagement_thr=self.visual_social_engagement_thr,
+                )
                 self.active_persons[person_id] = self.person
                 self.person.run()
 
     def run(self):
-        """ Timer callback to loop for the active humans and compute
-         their engagement status according to timer set in the constructor """
+        """Timer callback to loop for the active humans and compute
+        their engagement status according to timer set in the constructor"""
         while not rospy.is_shutdown():
             self.get_tracked_humans()
             self.loop_rate.sleep()
@@ -401,6 +404,5 @@ class EngagementNode(object):
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
     robot_gaze_frame = rospy.get_param("~robot_gaze_frame", default="sellion_link")
-    node = EngagementNode(
-        robot_gaze_frame)
+    node = EngagementNode(robot_gaze_frame)
     node.run()
