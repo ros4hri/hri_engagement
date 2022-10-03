@@ -47,11 +47,14 @@ class Person(object):
     # DISENGAGING: the person has started to look away from the robot
     """
 
-    def __init__(self, person_id=None):
+    def __init__(self, person_id=None, robot_gaze_frame="sellion_link"):
         """
         :param person_id:-> str
         person identifier flag to check whether the person pub
         is still registered
+        :param robot_gaze_frame:-> str
+        reference frame for the robot
+
         """
         self.person_id = person_id
         # face id of the person
@@ -383,7 +386,7 @@ class EngagementNode(object):
             if person_id in active_persons_id:
                 self.active_persons[person_id].run()
             else:
-                self.person = Person(person_id=person_id)
+                self.person = Person(person_id=person_id, robot_gaze_frame=self.reference_frame)
                 self.active_persons[person_id] = self.person
                 self.person.run()
 
