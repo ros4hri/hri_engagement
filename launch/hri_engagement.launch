@@ -7,7 +7,7 @@
         <!-- field of view of the robots and humans, in radians -->
         <param name="field_of_view" value="1.0" />
 
-        <param name="engagement_threshold" value="0.5" />
+        <param name="engagement_threshold" value="0.3" />
     </node>
 
 </launch>
