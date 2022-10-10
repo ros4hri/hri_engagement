@@ -246,7 +246,7 @@ class Person(object):
         M_AB = gaze_AB * gaze_BA
 
         S_AB = min(1, M_AB / d_AB)
-        # rospy.loginfo("S_AB: %s" % S_AB)
+        rospy.logdebug("S_AB: %s" % S_AB)
 
         if S_AB > self.visual_social_engagement_thr:
             self.person_engagement_history.append(1)
@@ -282,8 +282,8 @@ class Person(object):
                 sum(self.person_engagement_history) / self.engagement_history_size
             )
 
-            # rospy.loginfo("History: %s" % self.person_engagement_history)
-            # rospy.loginfo("Mean: %s" % engagement_value)
+            rospy.logdebug("History: %s" % self.person_engagement_history)
+            rospy.logdebug("Mean: %s" % engagement_value)
 
             if self.person_current_engagement_level == EngagementLevel.UNKNOWN:
                 self.person_current_engagement_level = EngagementLevel.DISENGAGED
