@@ -220,7 +220,11 @@ class Person(object):
         ## gaze_AB
         # gaze_AB measures how 'close' B is from the optical axis of A
 
-        # optical frame convention -> change coordinates to match those used in
+        # frame conventions:
+        #  - the *gaze* is using the 'optical frame' convention: +Z forward, +Y down
+        #  - the *reference frame* (normally, the sellion link) is using the +Z up, +X forward orientation
+        #
+        # -> change coordinates to match those used in
         # paper above
         xB = origin_gaze_trans.transform.translation.z
         yB = origin_gaze_trans.transform.translation.x
@@ -231,9 +235,9 @@ class Person(object):
             gaze_AB = max(0, 1 - (math.sqrt(yB ** 2 + zB ** 2) / (math.tan(FOV) * xB)))
 
         # gaze_BA measures how 'close' A is from the optical axis of B
-        xA = inverse_translation[2]
-        yA = inverse_translation[0]
-        zA = inverse_translation[1]
+        xA = inverse_translation[0]
+        yA = inverse_translation[1]
+        zA = inverse_translation[2]
 
         gaze_BA = 0.0
         if xA > 0:
