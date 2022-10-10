@@ -3,7 +3,11 @@
     <arg name="robot_gaze_frame" default="sellion_link" />
     <arg name="engagement_status_pub_rate" default="10" />
     <node pkg="hri_engagement" name="engagement_node" type="engagement_node.py" output="screen">
-        <param name="robot_gaze_frame" value="$(arg robot_gaze_frame)"/>
+        <param name="reference_frame" value="$(arg robot_gaze_frame)"/>
+        <!-- field of view of the robots and humans, in radians -->
+        <param name="field_of_view" value=1.0 />
+
+        <param name="engagement_threshold" value=0.5 />
     </node>
 
 </launch>

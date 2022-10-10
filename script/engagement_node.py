@@ -20,6 +20,10 @@ NODE_RATE = 20
 # field of 'attention' of a person
 FOV = 60.0 * math.pi / 180
 
+# threshold of 'visual social engagement' to consider engagement. See
+# Person.assess_engagement for detailed explanation.
+VISUAL_SOCIAL_ENGAGEMENT_THR = 0.5
+
 
 class EngagementStatus(enum.Enum):
     """
@@ -54,13 +58,13 @@ class Person(object):
     """
 
     def __init__(
-        self, person_id, robot_gaze_frame: str, visual_social_engagement_thr: float
+        self, person_id, reference_frame: str, visual_social_engagement_thr: float
     ):
         """
         :param person_id:-> str
         person identifier flag to check whether the person pub
         is still registered
-        :param robot_gaze_frame:-> str
+        :param reference_frame:-> str
         reference frame for the robot
         :param visual_social_engagement_thr: -> float
         visual social engagement threshold to be considered as 'engaging' with the robot
@@ -75,7 +79,7 @@ class Person(object):
         self.buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.buffer)
         # to change on the robot
-        self.reference_frame = robot_gaze_frame
+        self.reference_frame = reference_frame
 
         self.visual_social_engagement_thr = visual_social_engagement_thr
 
@@ -359,10 +363,12 @@ class EngagementNode(object):
     """
 
     def __init__(
-        self, robot_gaze_frame: str, visual_social_engagement_thr: float = 0.5
+        self,
+        reference_frame: str,
+        visual_social_engagement_thr: float = VISUAL_SOCIAL_ENGAGEMENT_THR,
     ):
         """
-        :param robot_gaze_frame: -> str
+        :param reference_frame: -> str
         reference frame to compute if a human is in the field of view
         of the robot
         :param visual_social_engagement_thr: -> float
@@ -371,7 +377,7 @@ class EngagementNode(object):
         self.buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.buffer)
         # to change on the robot
-        self.reference_frame = robot_gaze_frame
+        self.reference_frame = reference_frame
 
         # visual social engagement threshold
         self.visual_social_engagement_thr = visual_social_engagement_thr
@@ -432,7 +438,7 @@ class EngagementNode(object):
             else:
                 self.person = Person(
                     person_id=person_id,
-                    robot_gaze_frame=self.reference_frame,
+                    reference_frame=self.reference_frame,
                     visual_social_engagement_thr=self.visual_social_engagement_thr,
                 )
                 self.active_persons[person_id] = self.person
@@ -448,6 +454,11 @@ class EngagementNode(object):
 
 if __name__ == "__main__":
     rospy.init_node("engagement_node")
-    robot_gaze_frame = rospy.get_param("~robot_gaze_frame", default="sellion_link")
-    node = EngagementNode(robot_gaze_frame)
+    reference_frame = rospy.get_param("~reference_frame", default="sellion_link")
+    FOV = rospy.get_param("~field_of_view", default=FOV)
+    VISUAL_SOCIAL_ENGAGEMENT_THR = rospy.get_param(
+        "~engagement_threshold", default=VISUAL_SOCIAL_ENGAGEMENT_THR
+    )
+
+    node = EngagementNode(reference_frame)
     node.run()
