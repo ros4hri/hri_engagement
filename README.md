@@ -55,7 +55,8 @@ In particular, it refers to the REP to know the list of the people tracked, thei
 - `/humans/persons/<person_id>/engagement_status`
   ([hri_msgs/EngagementLevel](https://gitlab/ros4hri/hri_msgs/-/blob/master/msg/EngagementLevel.msg)):
   the IdList of the tracked people 
-
+- `/intents`([hri_actions_msgs/Intent](https://gitlab/ros4hri/hri_actions_msgs/-/blob/main/msg/Intent.msg)): 
+  the Intent ENGAGE_WITH (user is engaged with the robot)
 
 Usage
 ------
@@ -63,5 +64,21 @@ Before launching the engagement detector, you need to get the following nodes co
 - `hri_face_detection` https://gitlab/ros4hri/hri_face_detect
 - `hri_face_identification` https://gitlab/ros4hri/hri_face_identification
 - `hri_person_manager` https://gitlab/ros4hri/hri_person_manager
+
+Test
+------
+There are two tests, one called test_simple_hri_engagement and the other called test_complex_hri_engagement.
+The first one runs a test on a few simple bags of a person in front of the camera. Those are supposed to all pass.
+THe second one runs a test on more complex bags of three single persons and three multi persons (two of them in front 
+of the camera). At the moment those tests do not pass.
+ 
+First, we need to build the package 
+- `catkin build hri_engagement` 
+And then:
+- `catkin test hri_engagement` 
+
+N.B: The folder hri_engagement_bags contains the bags recorded in the PRISCA Lab in Naples. Each bag is a short
+recorded of 7-15 sec of a person (1p) or more than one (2p) in front of the camera looking at it (eng_1 and eng_2)
+or not (dis_1 and dis_2). The information regarding the bags are stored in the bag.json file.
 
 

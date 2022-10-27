@@ -10,11 +10,13 @@
 
   <author email="antonio.andriella@pal-robotics.com">Antonio Andriella</author>
 
+  <test_depend>rosunit</test_depend>
   <buildtool_depend>catkin</buildtool_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>hri_msgs</exec_depend>
   <exec_depend>tf</exec_depend>
+  <exec_depend>pyhri</exec_depend>
 
 </package>
