@@ -11,7 +11,7 @@ import rosbag
 from hri_msgs.msg import EngagementLevel
 import geometry_msgs.msg
 import sys
-import hri
+import pyhri
 
 sys.path.insert(0, os.path.abspath(os.path.join
                                    (os.path.dirname(__file__), '..')))
@@ -24,7 +24,7 @@ PKG = 'test_hri_engagement'
 class TestHRIEngagement(unittest.TestCase):
 
     def setUp(self):
-        self.directory = os.path.dirname(os.path.realpath(__file__)) + "/"
+        self.directory = os.path.dirname(os.path.realpath(__file__)) + "/complex_bags/"
         self.expected_result = None
         self.engagement_value = EngagementLevel.UNKNOWN
         self.person_tracked = dict()
@@ -32,9 +32,11 @@ class TestHRIEngagement(unittest.TestCase):
         self.face_id = dict()
         self.reference_frame = "camera_link"
         script.engagement_node.REFERENCE_FRAME = self.reference_frame
+        engagement_history_size = script.engagement_node.NODE_RATE * script.engagement_node.BUFFER_DURATION
+        self.frame_to_skip = engagement_history_size + 10
         self.visual_social_engagement_thr = 0.5
         self.rosbag_files = list()
-        self.hri_listener = hri
+        self.hri_listener = pyhri
         self.tfBuffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tfBuffer)
         # static tf
@@ -53,7 +55,10 @@ class TestHRIEngagement(unittest.TestCase):
                                t_camera.child_frame_id, t_camera)
 
     def tearDown(self):
-        pass
+        self.hri_listener = None
+        self.tfBuffer = None
+        self.listener = None
+        
 
     @staticmethod
     def publish_static_tf(source_frame, target_frame, transform):
@@ -77,10 +82,9 @@ class TestHRIEngagement(unittest.TestCase):
         """
         it tests the engagement of one person
         """
-        f = open(self.directory + 'bag.json')
+        f = open(self.directory + 'list_of_bags.json')
         data = json.load(f)
         engaged_data = data['single_person']['engaged']
-        self.expected_result = 3
 
         # extract person_id, rosbag_name, and expected result
         for person in engaged_data:
@@ -90,15 +94,15 @@ class TestHRIEngagement(unittest.TestCase):
                 self.rosbag_files = engaged_data[person]
             if person == 'expected_result':
                 self.expected_result = \
-                    [(int(engaged_data[person]))]
+                    [(int(engaged_data[person]))][0]
 
         assert len(self.persons_id) == len(self.rosbag_files), \
             f'n_persons need to be equal to n_rosbag_files'
 
-        person_instance = hri.Person("",
+        person_instance = pyhri.Person("",
                                      self.tfBuffer,
                                      self.reference_frame)
-        face_instance = hri.Face("",
+        face_instance = pyhri.Face("",
                                  self.tfBuffer,
                                  self.reference_frame)
 
@@ -111,7 +115,6 @@ class TestHRIEngagement(unittest.TestCase):
             engagement_node = \
                 EngagementNode(self.visual_social_engagement_thr)
             person_instance.id = (self.persons_id[i])
-            engagement_node.person = person_instance
             rospy.loginfo(f'Processing file ...'
                           f'{self.directory + self.rosbag_files[i]}')
             bag = rosbag.Bag(self.directory + self.rosbag_files[i],
@@ -124,13 +127,18 @@ class TestHRIEngagement(unittest.TestCase):
             self.tf_rcamera_to_hface = None
             self.tf_hface_to_hgaze = None
 
+            # we need to skip the first NODE_RATE * BUFFER_DURATION frames as 
+            # the algorithm is still buffering plus the addional 4 frame to give it
+            # the possibility to swich from UNKOWN to ENGAGED. 
+            frame_counter = 0
+            
             for (topic, msg, t) in iterator:
                 # get the tracked persons from the topic
                 if topic == "/humans/persons/tracked":
                     self.person_tracked = msg
                     for id in self.person_tracked.ids:
                         engagement_node.hri_listener._tracked_persons[id] = \
-                            engagement_node.person
+                            person_instance
 
                 # for each tracked person get the face_id
                 # (we need that to compute the engagement)
@@ -140,7 +148,7 @@ class TestHRIEngagement(unittest.TestCase):
                     face_instance.id = face_id.data
                     face_instance.frame = "face_" + face_id.data
                     face_instance.gaze_frame = "gaze_" + face_id.data
-                    engagement_node.person.face = face_instance
+                    person_instance.face = face_instance
 
                 # get the tfs and republish them
                 if topic == "/tf":
@@ -169,9 +177,14 @@ class TestHRIEngagement(unittest.TestCase):
                                         tf_hface_to_hgaze)
                         try:
                             engagement_node.get_tracked_humans()
-                            self.assertEqual(self.expected_result,
-                                             engagement_node.person.
+                            if frame_counter < self.frame_to_skip:
+                                frame_counter += 1 
+                            else:
+                                self.assertEqual(self.expected_result,
+                                             engagement_node.active_persons
+                                             [self.persons_id[i]]. \
                                              person_current_engagement_level)
+                                
                         except (tf2_ros.LookupException,
                                 tf2_ros.ConnectivityException,
                                 tf2_ros.ExtrapolationException) as e:
@@ -183,10 +196,9 @@ class TestHRIEngagement(unittest.TestCase):
         """
         it tests the disengagement of one person
         """
-        f = open(self.directory + '/bag.json')
+        f = open(self.directory + 'list_of_bags.json')
         data = json.load(f)
         disengaged_data = data['single_person']['disengaged']
-        self.expected_result = 1
 
         # extract person_id, rosbag_name, and expected result
         for person in disengaged_data:
@@ -196,15 +208,15 @@ class TestHRIEngagement(unittest.TestCase):
                 self.rosbag_files = disengaged_data[person]
             if person == 'expected_result':
                 self.expected_result = \
-                    [(int(disengaged_data[person]))]
+                    [(int(disengaged_data[person]))][0]
 
         assert len(self.persons_id) == len(self.rosbag_files), \
             f'n_persons need to be equal to n_rosbag_files'
 
-        person_instance = hri.Person("",
+        person_instance = pyhri.Person("",
                                      self.tfBuffer,
                                      self.reference_frame)
-        face_instance = hri.Face("",
+        face_instance = pyhri.Face("",
                                  self.tfBuffer,
                                  self.reference_frame)
 
@@ -217,7 +229,6 @@ class TestHRIEngagement(unittest.TestCase):
             engagement_node = \
                 EngagementNode(self.visual_social_engagement_thr)
             person_instance.id = (self.persons_id[i])
-            engagement_node.person = person_instance
             rospy.loginfo(f'Processing file ...'
                           f'{self.directory + self.rosbag_files[i]}')
             bag = rosbag.Bag(self.directory + self.rosbag_files[i],
@@ -228,14 +239,18 @@ class TestHRIEngagement(unittest.TestCase):
                                                  "/face_id", "/tf",
                                                  "/tf_static"])
 
-
+            # we need to skip the first NODE_RATE * BUFFER_DURATION frames as 
+            # the algorithm is still buffering plus the addional 4 frame to give it
+            # the possibility to swich from UNKOWN to ENGAGED. 
+            frame_counter = 0
+            
             for (topic, msg, t) in iterator:
                 # get the tracked persons from the topic
                 if topic == "/humans/persons/tracked":
                     self.person_tracked = msg
                     for id in self.person_tracked.ids:
                         engagement_node.hri_listener._tracked_persons[id] = \
-                            engagement_node.person
+                            person_instance
 
                 # for each tracked person get the face_id
                 # (we need that to compute the engagement)
@@ -245,7 +260,7 @@ class TestHRIEngagement(unittest.TestCase):
                     face_instance.id = face_id.data
                     face_instance.frame = "face_" + face_id.data
                     face_instance.gaze_frame = "gaze_" + face_id.data
-                    engagement_node.person.face = face_instance
+                    person_instance.face = face_instance
 
                 # get the tfs and republish them
                 if topic == "/tf":
@@ -275,8 +290,12 @@ class TestHRIEngagement(unittest.TestCase):
 
                         try:
                             engagement_node.get_tracked_humans()
-                            self.assertEqual(self.expected_result,
-                                             engagement_node.person.
+                            if frame_counter < self.frame_to_skip:
+                                frame_counter += 1 
+                            else:
+                                self.assertEqual(self.expected_result,
+                                             engagement_node.active_persons
+                                             [self.persons_id[i]]. \
                                              person_current_engagement_level)
 
 
@@ -291,7 +310,7 @@ class TestHRIEngagement(unittest.TestCase):
         """
         it tests the engagement of two persons
         """
-        f = open(self.directory + '/bag.json')
+        f = open(self.directory + 'list_of_bags.json')
         data = json.load(f)
         engaged_data = data['multi_person']['engaged']
 
@@ -303,21 +322,21 @@ class TestHRIEngagement(unittest.TestCase):
                 self.rosbag_files = engaged_data[person]
             if person == 'expected_result':
                 self.expected_result = \
-                    [(int(engaged_data[person]))]
+                    [(int(engaged_data[person]))][0]
 
         assert len(self.persons_id) == len(self.rosbag_files), \
             f'n_persons need to be equal to n_rosbag_files'
 
-        person_instance_1 = hri.Person("",
+        person_instance_1 = pyhri.Person("",
                                        self.tfBuffer,
                                        self.reference_frame)
-        face_instance_1 = hri.Face("",
+        face_instance_1 = pyhri.Face("",
                                    self.tfBuffer,
                                    self.reference_frame)
-        person_instance_2 = hri.Person("",
+        person_instance_2 = pyhri.Person("",
                                        self.tfBuffer,
                                        self.reference_frame)
-        face_instance_2 = hri.Face("",
+        face_instance_2 = pyhri.Face("",
                                    self.tfBuffer,
                                    self.reference_frame)
 
@@ -354,7 +373,12 @@ class TestHRIEngagement(unittest.TestCase):
                                                  "/face_id",
                                                  "/tf",
                                                  "/tf_static"])
-
+           
+            # we need to skip the first NODE_RATE * BUFFER_DURATION frames as 
+            # the algorithm is still buffering plus the addional 4 frame to give it
+            # the possibility to swich from UNKOWN to ENGAGED. 
+            frame_counter = 0
+            
             for (topic, msg, t) in iterator:
                 # get the tracked persons from the topic
                 if topic == "/humans/persons/tracked":
@@ -435,14 +459,17 @@ class TestHRIEngagement(unittest.TestCase):
                         tf_hface_to_hgaze_1 is not None):
                     try:
                         engagement_node.get_tracked_humans()
-                        self.assertEqual(self.expected_result,
-                                         engagement_node.active_persons
-                                         [self.persons_id[i][0]].
-                                         person_current_engagement_level)
-                        self.assertEqual(self.expected_result,
-                                         engagement_node.active_persons
-                                         [self.persons_id[i][1]].
-                                         person_current_engagement_level)
+                        if frame_counter < self.frame_to_skip:
+                            frame_counter += 1 
+                        else:
+                            self.assertEqual(self.expected_result,
+                                            engagement_node.active_persons
+                                            [self.persons_id[i][0]].
+                                            person_current_engagement_level)
+                            self.assertEqual(self.expected_result,
+                                            engagement_node.active_persons
+                                            [self.persons_id[i][1]].
+                                            person_current_engagement_level)
                     except (tf2_ros.LookupException,
                             tf2_ros.ConnectivityException,
                             tf2_ros.ExtrapolationException) as e:
@@ -454,7 +481,7 @@ class TestHRIEngagement(unittest.TestCase):
         """
         it tests the disengagement of one person
         """
-        f = open(self.directory + '/bag.json')
+        f = open(self.directory + 'list_of_bags.json')
         data = json.load(f)
         disengaged_data = data['multi_person']['disengaged']
 
@@ -466,21 +493,21 @@ class TestHRIEngagement(unittest.TestCase):
                 self.rosbag_files = disengaged_data[person]
             if person == 'expected_result':
                 self.expected_result = \
-                    [(int(disengaged_data[person]))]
+                    [(int(disengaged_data[person]))][0]
 
         assert len(self.persons_id) == len(self.rosbag_files), \
             f'n_persons need to be equal to n_rosbag_files'
 
-        person_instance_1 = hri.Person("",
+        person_instance_1 = pyhri.Person("",
                                        self.tfBuffer,
                                        self.reference_frame)
-        face_instance_1 = hri.Face("",
+        face_instance_1 = pyhri.Face("",
                                    self.tfBuffer,
                                    self.reference_frame)
-        person_instance_2 = hri.Person("",
+        person_instance_2 = pyhri.Person("",
                                        self.tfBuffer,
                                        self.reference_frame)
-        face_instance_2 = hri.Face("",
+        face_instance_2 = pyhri.Face("",
                                    self.tfBuffer,
                                    self.reference_frame)
 
@@ -517,6 +544,11 @@ class TestHRIEngagement(unittest.TestCase):
                                                  "/tf",
                                                  "/tf_static"])
 
+            # we need to skip the first NODE_RATE * BUFFER_DURATION frames as 
+            # the algorithm is still buffering plus the addional 4 frame to give it
+            # the possibility to swich from UNKOWN to ENGAGED. 
+            frame_counter = 0
+            
             for (topic, msg, t) in iterator:
                 # get the tracked persons from the topic
                 if topic == "/humans/persons/tracked":
@@ -598,14 +630,17 @@ class TestHRIEngagement(unittest.TestCase):
                         tf_hface_to_hgaze_1 is not None):
                     try:
                         engagement_node.get_tracked_humans()
-                        self.assertEqual(self.expected_result,
-                                         engagement_node.active_persons
-                                         [self.persons_id[i][0]].
-                                         person_current_engagement_level)
-                        self.assertEqual(self.expected_result,
-                                         engagement_node.active_persons
-                                         [self.persons_id[i][1]].
-                                         person_current_engagement_level)
+                        if frame_counter < self.frame_to_skip:
+                            frame_counter += 1 
+                        else:
+                            self.assertEqual(self.expected_result,
+                                            engagement_node.active_persons
+                                            [self.persons_id[i][0]].
+                                            person_current_engagement_level)
+                            self.assertEqual(self.expected_result,
+                                            engagement_node.active_persons
+                                            [self.persons_id[i][1]].
+                                            person_current_engagement_level)
                     except (tf2_ros.LookupException,
                             tf2_ros.ConnectivityException,
                             tf2_ros.ExtrapolationException) as e:

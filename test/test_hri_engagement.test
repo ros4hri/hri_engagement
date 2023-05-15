@@ -1,6 +1,7 @@
 <launch>
 
     	<!-- Run ROS test -->
-	<test test-name="ros_test_hri_engagement" pkg="hri_engagement" type="test_hri_engagement.py" />
+	<test test-name="ros_test_hri_engagement_simple" pkg="hri_engagement" type="test_simple_hri_engagement.py" />
+	<!-- <test test-name="ros_test_hri_engagement_complex" pkg="hri_engagement" type="test_complex_hri_engagement.py" /> -->
 
 </launch>

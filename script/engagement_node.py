@@ -224,10 +224,9 @@ class PersonEngagment(object):
                                  (math.tan(FOV) * xa)))
 
         m_ab = gaze_ab * gaze_ba
-        rospy.logdebug("gazeAB: %s, gazeBA=%s,  M_AB: %s" % 
-                      (gaze_ab, gaze_ba, m_ab))
-
         s_ab = min(1, m_ab / d_ab)
+        rospy.logdebug("gazeAB: %s, gazeBA: %s,  M_AB: %s, S_AB: %s" % 
+                      (gaze_ab, gaze_ba, m_ab, s_ab))
 
         if s_ab > VISUAL_SOCIAL_ENGAGEMENT_THR:
             self.person_engagement_history.append(1)
@@ -265,28 +264,36 @@ class PersonEngagment(object):
             rospy.logdebug("History: %s" % self.person_engagement_history)
             rospy.logdebug("Mean: %s" % engagement_value)
 
-            if self.person_current_engagement_level == EngagementLevel.UNKNOWN:
+            person_previous_engagement_level = self.person_current_engagement_level
+            if person_previous_engagement_level == EngagementLevel.UNKNOWN:
                 self.person_current_engagement_level = EngagementLevel.DISENGAGED
 
-            elif self.person_current_engagement_level == EngagementLevel.DISENGAGED:
+            elif person_previous_engagement_level == EngagementLevel.DISENGAGED:
                 if 0 <= engagement_value <= 1:
                     self.person_current_engagement_level = EngagementLevel.ENGAGING
 
-            elif self.person_current_engagement_level == EngagementLevel.ENGAGING:
+            elif person_previous_engagement_level == EngagementLevel.ENGAGING:
                 if -1 <= engagement_value < -0.5:
                     self.person_current_engagement_level = EngagementLevel.DISENGAGED
                 elif 0.5 < engagement_value <= 1.0:
                     self.person_current_engagement_level = EngagementLevel.ENGAGED
 
-            elif self.person_current_engagement_level == EngagementLevel.ENGAGED:
+            elif person_previous_engagement_level == EngagementLevel.ENGAGED:
                 if engagement_value <= 0.5:
                     self.person_current_engagement_level = EngagementLevel.DISENGAGING
 
-            elif self.person_current_engagement_level == EngagementLevel.DISENGAGING:
+            elif person_previous_engagement_level == EngagementLevel.DISENGAGING:
                 if engagement_value > 0.5:
                     self.person_current_engagement_level = EngagementLevel.ENGAGED
                 elif engagement_value <= 0.0:
                     self.person_current_engagement_level = EngagementLevel.DISENGAGED
+
+            if not person_previous_engagement_level == self.person_current_engagement_level:
+                rospy.loginfo("Engagement status for {} is: {}".format(
+                                self.person.id,
+                                EngagementStatus(self.person_current_engagement_level),
+                                ),
+                )
 
     def publish_engagement_status(self):
         """
@@ -294,17 +301,9 @@ class PersonEngagment(object):
         """
 
         engagement_msg = EngagementLevel()
+        engagement_msg.header.stamp = rospy.Time.now()
         engagement_msg.level = self.person_current_engagement_level
         self.engagement_status_pub.publish(engagement_msg)
-        # publish the message only if it is different
-        # or if is the same after 10 secs
-        rospy.loginfo_throttle_identical(
-            10,
-            "Engagement status for {} is: {}".format(
-                self.person.id,
-                EngagementStatus(self.person_current_engagement_level),
-            ),
-        )
 
         if self.person_current_engagement_level == engagement_msg.ENGAGED:
             intent_msg = Intent()
@@ -370,9 +369,6 @@ class EngagementNode(object):
         # frame rate of the node (hz)
         self.loop_rate = rospy.Rate(NODE_RATE)
 
-        # Person object
-        self.person = None
-
     def get_tracked_humans(self):
 
         self.tracked_persons_in_the_scene = self.hri_listener.tracked_persons
@@ -399,10 +395,7 @@ class EngagementNode(object):
             if person_id in active_persons_id:
                 self.active_persons[person_id].run()
             else:
-                self.person = PersonEngagment(
-                    person=person_instance,
-                )
-                self.active_persons[person_id] = self.person
+                self.active_persons[person_id] = PersonEngagment(person=person_instance)
                 self.active_persons[person_id].run()
 
     def run(self):
