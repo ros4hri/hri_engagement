@@ -119,9 +119,6 @@ class PersonEngagment(object):
         self.publish_engagement_status()
         self.engagement_status_pub.unregister()
 
-    def compute_transform(self):
-        pass
-
     def assess_engagement(self):
         """
         Computes the current 'visual social engagement' metric as defined in
@@ -370,6 +367,10 @@ class EngagementNode(object):
         self.loop_rate = rospy.Rate(NODE_RATE)
 
     def get_tracked_humans(self):
+        """
+        updater of self.active_persons, the dictionary of tracked humans
+        PersonEngagement
+        """
 
         self.tracked_persons_in_the_scene = self.hri_listener.tracked_persons
 

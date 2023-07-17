@@ -67,17 +67,24 @@ Before launching the engagement detector, you need to get the following nodes co
 
 Test
 ------
-There are two tests, one called test_simple_hri_engagement and the other called test_complex_hri_engagement.
+There are two tests, `test_hri_engagement_synth_data` using synthetic data and `test_hri_engagement` using
+rosbags derived from live recordings.
+
+The synthetic data are simple programmatically generated inputs and expected ground truth outputs.
+Currently are generated sequences of static positions of up to two persons simultaneously.
+
+There are two live recordings tests, one called `test_simple_hri_engagement` and the other called
+`test_complex_hri_engagement`.
 The first one runs a test on a few simple bags of a person in front of the camera. Those are supposed to all pass.
 THe second one runs a test on more complex bags of three single persons and three multi persons (two of them in front 
-of the camera). At the moment those tests do not pass.
+of the camera). At the moment those tests do not pass and is not run by default.
  
 First, we need to build the package 
 - `catkin build hri_engagement` 
 And then:
 - `catkin test hri_engagement` 
 
-N.B: The folder hri_engagement_bags contains the bags recorded in the PRISCA Lab in Naples. Each bag is a short
+N.B: The folder `hri_engagement_bags` contains the bags recorded in the PRISCA Lab in Naples. Each bag is a short
 recorded of 7-15 sec of a person (1p) or more than one (2p) in front of the camera looking at it (eng_1 and eng_2)
 or not (dis_1 and dis_2). The information regarding the bags are stored in the bag.json file.
 

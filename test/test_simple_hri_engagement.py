@@ -34,9 +34,8 @@ class TestHRIEngagement(unittest.TestCase):
         script.engagement_node.REFERENCE_FRAME = self.reference_frame
         engagement_history_size = script.engagement_node.NODE_RATE * script.engagement_node.BUFFER_DURATION
         self.frame_to_skip = engagement_history_size + 10
-        self.visual_social_engagement_thr = 0.5
+        self.visual_social_engagement_thr = script.engagement_node.VISUAL_SOCIAL_ENGAGEMENT_THR
         self.rosbag_files = list()
-        self.hri_listener = pyhri
         self.tfBuffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tfBuffer)
         # static tf
@@ -55,7 +54,6 @@ class TestHRIEngagement(unittest.TestCase):
                                t_camera.child_frame_id, t_camera)
 
     def tearDown(self):
-        self.hri_listener = None
         self.tfBuffer = None
         self.listener = None
         
@@ -175,9 +173,12 @@ class TestHRIEngagement(unittest.TestCase):
                         self.publish_tf(tf_hface_to_hgaze.header.frame_id,
                                         tf_hface_to_hgaze.child_frame_id,
                                         tf_hface_to_hgaze)
+                        
+                        rospy.sleep(rospy.Duration(nsecs=(1e9/script.engagement_node.NODE_RATE))) 
+
                         try:
                             engagement_node.get_tracked_humans()
-                            if frame_counter < self.frame_to_skip:
+                            if frame_counter < self.frame_to_skip and engagement_node.tracked_persons_in_the_scene:
                                 frame_counter += 1 
                             else:
                                 self.assertEqual(self.expected_result,
@@ -310,5 +311,5 @@ class TestHRIEngagement(unittest.TestCase):
 if __name__ == "__main__":
     import rostest
 
-    rospy.init_node("hri_engagement_test", log_level=rospy.INFO)
+    rospy.init_node("hri_engagement_test")
     rostest.rosrun(PKG, "test_hri_engagement", TestHRIEngagement)

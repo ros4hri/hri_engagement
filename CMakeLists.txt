@@ -22,6 +22,7 @@ install(DIRECTORY launch
 if(CATKIN_ENABLE_TESTING)
   find_package(rostest REQUIRED)
   add_rostest(test/test_hri_engagement.test)
+  add_rostest(test/test_hri_engagement_synth_data.test)
 endif()
 
 
