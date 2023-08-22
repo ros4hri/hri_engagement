@@ -44,7 +44,7 @@ class EngagementStatus(enum.Enum):
     DISENGAGING = 4
 
 
-class PersonEngagment(object):
+class PersonEngagement(object):
     """
     Auxiliary class that given a Person identified with their person_id,
     it publishes their engagement status on the topic:
@@ -91,7 +91,7 @@ class PersonEngagment(object):
                                 queue_size=10)
 
         except AttributeError:
-            rospy.logerr(
+            rospy.logwarn(
                 "cannot create a pub as "
                 "the value of self.person_id is ".format(self.person.id)
             )
@@ -133,7 +133,7 @@ class PersonEngagment(object):
         """
 
         if not self.person.face:
-            rospy.logwarn("No face detected, can not compute engagement")
+            rospy.logdebug("No face detected, can not compute engagement")
             return
 
         # compute the person's position 'viewed' from the robot's 'gaze'
@@ -141,7 +141,7 @@ class PersonEngagment(object):
                                                             REFERENCE_FRAME)
 
         if person_from_robot == tf2_ros.TransformStamped():
-            rospy.logwarn(
+            rospy.logdebug(
                 "null transform published for person's face %s" % 
                 self.person.face
             )
@@ -152,7 +152,7 @@ class PersonEngagment(object):
             # if the tf is not available for more than timeout_tf secs
             # then set the engagement status of that person to UNKNOWN
             if self.current_time_from_tf >= self.timeout_tf:
-                rospy.logwarn(
+                rospy.logdebug(
                     "Timeout. Set the EngagementLevel for person"
                     " {} to UNKNOWN".format(self.person.id)
                 )
@@ -318,7 +318,7 @@ class PersonEngagment(object):
 
         # if we do not have the face id of the person we just return
         if not self.person.id:
-            rospy.loginfo_throttle_identical(
+            rospy.logdebug_throttle_identical(
                 1, "there is no face_id for the person {}".format(self.person.id)
             )
             return
@@ -396,7 +396,7 @@ class EngagementNode(object):
             if person_id in active_persons_id:
                 self.active_persons[person_id].run()
             else:
-                self.active_persons[person_id] = PersonEngagment(person=person_instance)
+                self.active_persons[person_id] = PersonEngagement(person=person_instance)
                 self.active_persons[person_id].run()
 
     def run(self):
