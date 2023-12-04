@@ -16,6 +16,9 @@ BUFFER_DURATION = 2  # secs
 # rate of the main node
 NODE_RATE = 20
 
+# people further away than MAX_DISTANCE have their engagement level set to DISENGAGED
+MAX_DISTANCE = 4  # m
+
 # field of 'attention' of a person
 FOV = 60.0 * math.pi / 180
 
@@ -178,6 +181,13 @@ class PersonEngagement(object):
 
         tx, ty, tz = transformations.translation_from_matrix(robot_from_person)
         d_ab = math.sqrt(tx ** 2 + ty ** 2 + tz ** 2)
+
+        if d_ab > MAX_DISTANCE:
+            self.person_engagement_history.append(-1)
+            rospy.logdebug(
+                f"dAB: {d_ab:.2f}: person is too far to be engaged (max distance: {MAX_DISTANCE}m)")
+
+            return
 
         # gaze_AB
         # gaze_AB measures how 'close' B is from the optical axis of A
@@ -398,10 +408,13 @@ class EngagementNode(object):
 
 
 if __name__ == "__main__":
-    rospy.init_node("engagement_node")
+    rospy.init_node("engagement_monitor")
+    MAX_DISTANCE = rospy.get_param(
+        "~max_distance", default=MAX_DISTANCE)
     REFERENCE_FRAME = rospy.get_param(
         "~reference_frame", default=REFERENCE_FRAME)
-    FOV = rospy.get_param("~field_of_view", default=FOV)
+    FOV = rospy.get_param("~field_of_view", default=FOV *
+                          180/math.pi) * math.pi / 180
     VISUAL_SOCIAL_ENGAGEMENT_THR = rospy.get_param(
         "~engagement_threshold", default=VISUAL_SOCIAL_ENGAGEMENT_THR
     )
