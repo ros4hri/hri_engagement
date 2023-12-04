@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 import rospy
 from pyhri import HRIListener
+from pyhri.person import Person
 from hri_msgs.msg import EngagementLevel
 from hri_actions_msgs.msg import Intent
 import tf2_ros
 from tf import transformations
 
 import math
-import enum
 import json
 
 # time window to store the engagement status of the person (secs)
@@ -26,22 +26,18 @@ VISUAL_SOCIAL_ENGAGEMENT_THR = 0.55
 # reference frame of the robot
 REFERENCE_FRAME = "sellion_link"
 
-
-class EngagementStatus(enum.Enum):
-    """
-    Auxiliary class to print in a more intuitive way the engagement status
-    """
-
+EngagementStatus = {
     # unknown: no information is provided about the engagement level
-    UNKNOWN = 0
+    EngagementLevel.UNKNOWN: "UNKNOWN",
     # disengaged: the person has not looked in the direction of the robot
-    DISENGAGED = 1
+    EngagementLevel.DISENGAGED: "DISENGAGED",
     # engaging: the person has started to look in the direction of the robot
-    ENGAGING = 2
+    EngagementLevel.ENGAGING: "ENGAGING",
     # engaged: the person is fully engaged with the robot
-    ENGAGED = 3
+    EngagementLevel.ENGAGED: "ENGAGED",
     # disengaging: the person has started to look away from the robot
-    DISENGAGING = 4
+    EngagementLevel.DISENGAGING: "DISENGAGING"
+}
 
 
 class PersonEngagement(object):
@@ -59,13 +55,7 @@ class PersonEngagement(object):
     # DISENGAGING: the person has started to look away from the robot
     """
 
-    def __init__(
-            self, person
-    ):
-        """
-        :param person:-> hri.person.Person
-        person object
-        """
+    def __init__(self, person: Person):
         self.person = person
         # flag
         self.is_registered = True
@@ -80,11 +70,11 @@ class PersonEngagement(object):
         try:
             self.engagement_status_pub = \
                 rospy.Publisher(
-                                self.person.ns +
-                                "/engagement_status",
-                                EngagementLevel,
-                                queue_size=10,
-                                )
+                    self.person.ns +
+                    "/engagement_status",
+                    EngagementLevel,
+                    queue_size=10,
+                )
             self.intent_pub = \
                 rospy.Publisher("/intents",
                                 Intent,
@@ -107,8 +97,6 @@ class PersonEngagement(object):
         self.person_current_engagement_level = EngagementLevel.UNKNOWN
         # publish the engagement status as soon as the Person is created
         self.publish_engagement_status()
-
-
 
     def unregister(self):
         """
@@ -137,16 +125,16 @@ class PersonEngagement(object):
             return
 
         # compute the person's position 'viewed' from the robot's 'gaze'
-        person_from_robot = self.person.face.gaze_transform(from_frame=
-                                                            REFERENCE_FRAME)
+        person_from_robot = self.person.face.gaze_transform(
+            from_frame=REFERENCE_FRAME)
 
         if person_from_robot == tf2_ros.TransformStamped():
             rospy.logdebug(
-                "null transform published for person's face %s" % 
+                "null transform published for person's face %s" %
                 self.person.face
             )
             self.current_time_from_tf = (
-                    rospy.Time.now() - self.start_time_from_tf
+                rospy.Time.now() - self.start_time_from_tf
             ).to_sec()
 
             # if the tf is not available for more than timeout_tf secs
@@ -191,12 +179,12 @@ class PersonEngagement(object):
         tx, ty, tz = transformations.translation_from_matrix(robot_from_person)
         d_ab = math.sqrt(tx ** 2 + ty ** 2 + tz ** 2)
 
-        ## gaze_AB
+        # gaze_AB
         # gaze_AB measures how 'close' B is from the optical axis of A
 
         # frame conventions:
         #  - the *gaze* is using the 'optical frame' convention: +Z forward, +Y down
-        #  - the *reference frame* (normally, the sellion link) is using the +Z up, 
+        #  - the *reference frame* (normally, the sellion link) is using the +Z up,
         #    +X forward orientation
         #
         # -> change coordinates to match those used in the paper above
@@ -206,8 +194,8 @@ class PersonEngagement(object):
 
         gaze_ab = 0.0
         if xb > 0:
-            gaze_ab = max(0, 1 - (math.sqrt(yb ** 2 + zb ** 2) / 
-                                 (math.tan(FOV) * xb)))
+            gaze_ab = max(0, 1 - (math.sqrt(yb ** 2 + zb ** 2) /
+                                  (math.tan(FOV) * xb)))
 
         # gaze_BA measures how 'close' A is from the optical axis of B
         t_ba = person_from_robot.transform.translation
@@ -217,13 +205,13 @@ class PersonEngagement(object):
 
         gaze_ba = 0.0
         if xa > 0:
-            gaze_ba = max(0, 1 - (math.sqrt(ya ** 2 + za ** 2) / 
-                                 (math.tan(FOV) * xa)))
+            gaze_ba = max(0, 1 - (math.sqrt(ya ** 2 + za ** 2) /
+                                  (math.tan(FOV) * xa)))
 
         m_ab = gaze_ab * gaze_ba
         s_ab = min(1, m_ab / d_ab)
-        rospy.logdebug("gazeAB: %s, gazeBA: %s,  M_AB: %s, S_AB: %s" % 
-                      (gaze_ab, gaze_ba, m_ab, s_ab))
+        rospy.logdebug("gazeAB: %s, gazeBA: %s,  M_AB: %s, S_AB: %s" %
+                       (gaze_ab, gaze_ba, m_ab, s_ab))
 
         if s_ab > VISUAL_SOCIAL_ENGAGEMENT_THR:
             self.person_engagement_history.append(1)
@@ -251,11 +239,12 @@ class PersonEngagement(object):
         else:
             # clean up the person engagement history
             self.person_engagement_history = self.person_engagement_history[
-                                             -self.engagement_history_size:]
+                -self.engagement_history_size:]
 
             # compute the average engagement value
             engagement_value = (
-                    sum(self.person_engagement_history) / self.engagement_history_size
+                sum(self.person_engagement_history) /
+                self.engagement_history_size
             )
 
             rospy.logdebug("History: %s" % self.person_engagement_history)
@@ -287,9 +276,9 @@ class PersonEngagement(object):
 
             if not person_previous_engagement_level == self.person_current_engagement_level:
                 rospy.loginfo("Engagement status for {} is: {}".format(
-                                self.person.id,
-                                EngagementStatus(self.person_current_engagement_level),
-                                ),
+                    self.person.id,
+                    EngagementStatus[self.person_current_engagement_level],
+                ),
                 )
 
     def publish_engagement_status(self):
@@ -307,7 +296,6 @@ class PersonEngagement(object):
             intent_msg.intent = intent_msg.ENGAGE_WITH
             intent_msg.data = json.dumps({"recipient": self.person.id})
             self.intent_pub.publish(intent_msg)
-            
 
     def run(self):
         """
@@ -319,7 +307,8 @@ class PersonEngagement(object):
         # if we do not have the face id of the person we just return
         if not self.person.id:
             rospy.logdebug_throttle_identical(
-                1, "there is no face_id for the person {}".format(self.person.id)
+                1, "there is no face_id for the person {}".format(
+                    self.person.id)
             )
             return
         else:
@@ -355,8 +344,7 @@ class EngagementNode(object):
         self.buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.buffer)
         self.hri_listener = HRIListener()
-       
-        
+
         # get the list of IDs of the currently visible persons
         self.tracked_persons_in_the_scene = None
 
@@ -382,7 +370,8 @@ class EngagementNode(object):
                     self.active_persons[
                         active_human
                     ].person_current_engagement_level = EngagementLevel.UNKNOWN
-                    self.active_persons[active_human].publish_engagement_status()
+                    self.active_persons[active_human].publish_engagement_status(
+                    )
                     self.active_persons[active_human].unregister()
                     del self.active_persons[active_human]
         else:
@@ -396,7 +385,8 @@ class EngagementNode(object):
             if person_id in active_persons_id:
                 self.active_persons[person_id].run()
             else:
-                self.active_persons[person_id] = PersonEngagement(person=person_instance)
+                self.active_persons[person_id] = PersonEngagement(
+                    person=person_instance)
                 self.active_persons[person_id].run()
 
     def run(self):
@@ -408,8 +398,9 @@ class EngagementNode(object):
 
 
 if __name__ == "__main__":
-    rospy.init_node("engagement_monitor")
-    REFERENCE_FRAME = rospy.get_param("~reference_frame", default=REFERENCE_FRAME)
+    rospy.init_node("engagement_node")
+    REFERENCE_FRAME = rospy.get_param(
+        "~reference_frame", default=REFERENCE_FRAME)
     FOV = rospy.get_param("~field_of_view", default=FOV)
     VISUAL_SOCIAL_ENGAGEMENT_THR = rospy.get_param(
         "~engagement_threshold", default=VISUAL_SOCIAL_ENGAGEMENT_THR
