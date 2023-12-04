@@ -9,7 +9,7 @@ catkin_package(
   pyhri
 )
 
-catkin_install_python(PROGRAMS script/engagement_node.py
+catkin_install_python(PROGRAMS script/engagement_monitor
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

@@ -408,7 +408,7 @@ class EngagementNode(object):
 
 
 if __name__ == "__main__":
-    rospy.init_node("engagement_node")
+    rospy.init_node("engagement_monitor")
     REFERENCE_FRAME = rospy.get_param("~reference_frame", default=REFERENCE_FRAME)
     FOV = rospy.get_param("~field_of_view", default=FOV)
     VISUAL_SOCIAL_ENGAGEMENT_THR = rospy.get_param(
