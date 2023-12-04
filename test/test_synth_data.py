@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+from script.engagement_node import BUFFER_DURATION, FOV, REFERENCE_FRAME, NODE_RATE
 from dataclasses import asdict, dataclass
 from geometry_msgs.msg import TransformStamped
 from hri_actions_msgs.msg import Intent
@@ -19,8 +20,8 @@ from tf.transformations import quaternion_from_euler
 import tf2_ros
 from typing import Dict, List
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from script.engagement_node import BUFFER_DURATION, FOV, REFERENCE_FRAME, NODE_RATE
+sys.path.insert(0, os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..")))
 
 PKG = "hri_engagement"
 
@@ -123,7 +124,8 @@ class SynthDataPublisher:
         ids_tracked = [
             id for id in self.persons_ids if (df_curr[id, "tracked"] == True)
         ]
-        ids_tested = [id for id in self.persons_ids if (df_curr[id, "tested"] == True)]
+        ids_tested = [id for id in self.persons_ids if (
+            df_curr[id, "tested"] == True)]
         ids_tracked_mgs = IdsList(ids=[str(id) for id in ids_tracked])
         self.persons_tracked_pub.publish(ids_tracked_mgs)
         self.faces_tracked_pub.publish(ids_tracked_mgs)
@@ -330,7 +332,8 @@ class GenericTestSequence(unittest.TestCase):
             curr_timestamp = pd.Timestamp(0)
             df_states = []
             for state in person_data:
-                end_timestamp = curr_timestamp + pd.Timedelta(seconds=state.duration)
+                end_timestamp = curr_timestamp + \
+                    pd.Timedelta(seconds=state.duration)
                 df_state = pd.io.json.json_normalize(asdict(state)).drop(
                     columns=["duration"]
                 )
@@ -373,7 +376,8 @@ class TestSequenceMeta(type):
 
 class TestSynthData(GenericTestSequence, metaclass=TestSequenceMeta):
     test_sequence_data = [
-        TestData(name="one_person_in_front", params={"data": [[PersonState()]]}),
+        TestData(name="one_person_in_front", params={
+                 "data": [[PersonState()]]}),
         TestData(
             name="one_person_look_slightly_left",
             params={"data": [[PersonState(head_rot=HEAD_ROT_SLIGHTLY_LEFT)]]},
@@ -384,11 +388,13 @@ class TestSynthData(GenericTestSequence, metaclass=TestSequenceMeta):
         ),
         TestData(
             name="one_person_look_left",
-            params={"data": [[PersonState(engaged=False, head_rot=HEAD_ROT_LEFT)]]},
+            params={
+                "data": [[PersonState(engaged=False, head_rot=HEAD_ROT_LEFT)]]},
         ),
         TestData(
             name="one_person_look_right",
-            params={"data": [[PersonState(engaged=False, head_rot=HEAD_ROT_RIGHT)]]},
+            params={
+                "data": [[PersonState(engaged=False, head_rot=HEAD_ROT_RIGHT)]]},
         ),
         TestData(
             name="one_person_out_fov_left",
