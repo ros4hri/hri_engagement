@@ -27,7 +27,7 @@ The engagement status is defined according to the `EngagementLevel.msg` defined 
 Launch
 ------
 
-`roslaunch hri_engagement hri_engagement.launch <parameters>`
+`roslaunch hri_engagement monitor.launch <parameters>`
 
 
 ROS API
