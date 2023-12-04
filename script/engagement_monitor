@@ -214,14 +214,22 @@ class PersonEngagement(object):
         za = t_ba.z
 
         gaze_ba = 0.0
+        log_d_ab = 0.0
         if xa > 0:
             gaze_ba = max(0, 1 - (math.sqrt(ya ** 2 + za ** 2) /
                                   (math.tan(FOV) * xa)))
 
+            # transform the distance into a factor that:
+            #  - starts at 1 when distance = 0
+            #  - 'gently' goes down to 0
+            #  - reaches 0 at MAX_DISTANCE
+            log_d_ab = math.log(-d_ab + MAX_DISTANCE + 1) / \
+                math.log(MAX_DISTANCE + 1)
+
         m_ab = gaze_ab * gaze_ba
-        s_ab = min(1, m_ab / d_ab)
-        rospy.logdebug("gazeAB: %s, gazeBA: %s,  M_AB: %s, S_AB: %s" %
-                       (gaze_ab, gaze_ba, m_ab, s_ab))
+        s_ab = min(1, m_ab * log_d_ab)
+        rospy.logdebug(
+            f"dAB: {d_ab:.2f}, log(d_ab): {log_d_ab:.2f}, gazeAB: {gaze_ab:.2f}, gazeBA: {gaze_ba:.2f},  M_AB: {m_ab:.2f}, S_AB: {s_ab:.2f}")
 
         if s_ab > VISUAL_SOCIAL_ENGAGEMENT_THR:
             self.person_engagement_history.append(1)
