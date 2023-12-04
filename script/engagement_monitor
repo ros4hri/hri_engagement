@@ -12,9 +12,9 @@ import math
 import json
 
 # time window to store the engagement status of the person (secs)
-BUFFER_DURATION = 2  # secs
+BUFFER_DURATION = 10  # secs
 # rate of the main node
-NODE_RATE = 20
+NODE_RATE = 10
 
 # people further away than MAX_DISTANCE have their engagement level set to DISENGAGED
 MAX_DISTANCE = 4  # m
@@ -24,7 +24,7 @@ FOV = 60.0 * math.pi / 180
 
 # threshold of 'visual social engagement' to consider engagement. See
 # Person.assess_engagement for detailed explanation.
-VISUAL_SOCIAL_ENGAGEMENT_THR = 0.55
+VISUAL_SOCIAL_ENGAGEMENT_THR = 0.3
 
 # reference frame of the robot
 REFERENCE_FRAME = "sellion_link"
@@ -249,55 +249,62 @@ class PersonEngagement(object):
         At the beginning the person status is set to "unknown"
         """
 
-        # waiting a few frames before assessing whether a person is engaged or not
-        if len(self.person_engagement_history) < self.engagement_history_size:
-            rospy.logdebug("building buffer for person {}"
-                           .format(self.person.ns))
+        # start computed engaged when reaching half the nominal buffer size
+        if len(self.person_engagement_history) < BUFFER_DURATION * NODE_RATE * 0.5:
             return
-        else:
-            # clean up the person engagement history
-            self.person_engagement_history = self.person_engagement_history[
-                -self.engagement_history_size:]
 
-            # compute the average engagement value
-            engagement_value = (
-                sum(self.person_engagement_history) /
-                self.engagement_history_size
+        # clean up the person engagement history
+        self.person_engagement_history = self.person_engagement_history[
+            -self.engagement_history_size:]
+
+        # compute the average engagement value
+        engagement_value = (
+            sum(self.person_engagement_history) /
+            len(self.person_engagement_history)
+        )
+
+        rospy.logdebug("History: %s" % self.person_engagement_history)
+        rospy.logdebug("Mean: %s" % engagement_value)
+
+        next_level = EngagementLevel.UNKNOWN
+
+        if self.person_current_engagement_level == EngagementLevel.UNKNOWN:
+            next_level = EngagementLevel.DISENGAGED
+
+        elif self.person_current_engagement_level == EngagementLevel.DISENGAGED:
+            if engagement_value > -0.4:
+                next_level = EngagementLevel.ENGAGING
+
+        elif self.person_current_engagement_level == EngagementLevel.ENGAGING:
+            if engagement_value < -0.6:
+                next_level = EngagementLevel.DISENGAGED
+            elif engagement_value > 0.5:
+                next_level = EngagementLevel.ENGAGED
+
+        elif self.person_current_engagement_level == EngagementLevel.ENGAGED:
+            if engagement_value < 0.4:
+                next_level = EngagementLevel.DISENGAGING
+
+        elif self.person_current_engagement_level == EngagementLevel.DISENGAGING:
+            if engagement_value > 0.6:
+                next_level = EngagementLevel.ENGAGED
+            elif engagement_value < -0.5:
+                next_level = EngagementLevel.DISENGAGED
+
+        if next_level != EngagementLevel.UNKNOWN and next_level != self.person_current_engagement_level:
+            self.person_current_engagement_level = next_level
+            rospy.loginfo("Engagement status for {} is: {}".format(
+                self.person.id,
+                EngagementStatus[self.person_current_engagement_level],
+            ),
             )
 
-            rospy.logdebug("History: %s" % self.person_engagement_history)
-            rospy.logdebug("Mean: %s" % engagement_value)
-
-            person_previous_engagement_level = self.person_current_engagement_level
-            if person_previous_engagement_level == EngagementLevel.UNKNOWN:
-                self.person_current_engagement_level = EngagementLevel.DISENGAGED
-
-            elif person_previous_engagement_level == EngagementLevel.DISENGAGED:
-                if 0 <= engagement_value <= 1:
-                    self.person_current_engagement_level = EngagementLevel.ENGAGING
-
-            elif person_previous_engagement_level == EngagementLevel.ENGAGING:
-                if -1 <= engagement_value < -0.5:
-                    self.person_current_engagement_level = EngagementLevel.DISENGAGED
-                elif 0.5 < engagement_value <= 1.0:
-                    self.person_current_engagement_level = EngagementLevel.ENGAGED
-
-            elif person_previous_engagement_level == EngagementLevel.ENGAGED:
-                if engagement_value <= 0.5:
-                    self.person_current_engagement_level = EngagementLevel.DISENGAGING
-
-            elif person_previous_engagement_level == EngagementLevel.DISENGAGING:
-                if engagement_value > 0.5:
-                    self.person_current_engagement_level = EngagementLevel.ENGAGED
-                elif engagement_value <= 0.0:
-                    self.person_current_engagement_level = EngagementLevel.DISENGAGED
-
-            if not person_previous_engagement_level == self.person_current_engagement_level:
-                rospy.loginfo("Engagement status for {} is: {}".format(
-                    self.person.id,
-                    EngagementStatus[self.person_current_engagement_level],
-                ),
-                )
+            # if we just became engaged, publish an ENGAGE_WITH intent
+            if self.person_current_engagement_level == EngagementLevel.ENGAGED:
+                intent_msg = Intent()
+                intent_msg.intent = intent_msg.ENGAGE_WITH
+                intent_msg.data = json.dumps({"recipient": self.person.id})
+                self.intent_pub.publish(intent_msg)
 
     def publish_engagement_status(self):
         """
@@ -308,12 +315,6 @@ class PersonEngagement(object):
         engagement_msg.header.stamp = rospy.Time.now()
         engagement_msg.level = self.person_current_engagement_level
         self.engagement_status_pub.publish(engagement_msg)
-
-        if self.person_current_engagement_level == engagement_msg.ENGAGED:
-            intent_msg = Intent()
-            intent_msg.intent = intent_msg.ENGAGE_WITH
-            intent_msg.data = json.dumps({"recipient": self.person.id})
-            self.intent_pub.publish(intent_msg)
 
     def run(self):
         """
