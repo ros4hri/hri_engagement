@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from script.engagement_node import BUFFER_DURATION, FOV, REFERENCE_FRAME, NODE_RATE
+from hri_engagement.engagement_node import BUFFER_DURATION, FOV, REFERENCE_FRAME, NODE_RATE
 from dataclasses import asdict, dataclass
 from geometry_msgs.msg import TransformStamped
 from hri_actions_msgs.msg import Intent

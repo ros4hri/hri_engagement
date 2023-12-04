@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-import script.engagement_node
-from script.engagement_node import EngagementNode
+from hri_engagement.engagement_node import BUFFER_DURATION, REFERENCE_FRAME, NODE_RATE, EngagementNode
 import os
 import json
 import tf2_ros
@@ -32,9 +31,8 @@ class TestHRIEngagement(unittest.TestCase):
         self.person_id = dict()
         self.face_id = dict()
         self.reference_frame = "camera_link"
-        script.engagement_node.REFERENCE_FRAME = self.reference_frame
-        engagement_history_size = script.engagement_node.NODE_RATE * \
-            script.engagement_node.BUFFER_DURATION
+        REFERENCE_FRAME = self.reference_frame
+        engagement_history_size = NODE_RATE * BUFFER_DURATION
         self.frame_to_skip = engagement_history_size + 10
         self.visual_social_engagement_thr = 0.5
         self.rosbag_files = list()
