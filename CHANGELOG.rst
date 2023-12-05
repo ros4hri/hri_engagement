@@ -2,8 +2,8 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.0 (2023-12-05)
+------------------
 * [test] disabled simple 'disengagement' bagfiles
   The current version of the algorithm consider these people to be
   partially engaged, thus failing the test
