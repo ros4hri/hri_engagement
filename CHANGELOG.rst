@@ -2,6 +2,35 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* [test] disabled simple 'disengagement' bagfiles
+  The current version of the algorithm consider these people to be
+  partially engaged, thus failing the test
+* [doc] fix/update/complete README
+* tune the algorithm for more plausible results
+  Tested with myself in front of the webcam
+  While here, only publish the 'ENGAGE_WITH' intent when we first become ENGAGED
+* change how distance is used to compute engagement
+  Instead of simply dividing mutual gaze by distance, use a more complex log-based version of the distance that goes down 'gently' towards zero
+* add param to set a maximum distance to even consider engagement
+  By default, 4m
+* {hri_engagement.launch -> monitor.launch}
+* {engagement_node.py -> engagement_monitor}
+* add synthetic tests
+* Add two unittest for hri_engagement
+  - Add a new test folder called complex_bags with bags that do not pass
+  the test
+  - Add a new test folder called simple_bags with bags that need to pass
+  the test
+  - Code refactoring
+* migrate code to pyhri
+* add ROS parameters to configure field of view and social engagement threshold
+* reimplement the core algorithm to use the Visual Social Engagement metric
+  From: Measuring Visual Social Engagement from Proxemics and Gaze (Webb and Lemaignan 2022)
+  While here, adjusted several constant for more reliable behaviour
+* Contributors: Luka Juricic, Séverin Lemaignan, antonioandriella, saracooper
+
 0.1.0 (2022-08-02)
 ------------------
 * Add ReadMe
