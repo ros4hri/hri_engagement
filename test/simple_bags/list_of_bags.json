@@ -1,33 +1,20 @@
 {
-  "single_person":
-  {
-    
-    "engaged": {
-        "person_id": [
-          "ztclh",
-          "ztclh"
-        ],
-        "expected_result": "3",
-        "rosbag": [
-          "1p_AA_ENG_1.bag",
-          "1p_AA_ENG_2.bag"
-          
-        ]
-    },
-
-    "disengaged": {
-      "person_id": [
-        "ztclh",
-        "ztclh"
-      ],
-      "expected_result": "1",
-      "rosbag": [
-        "1p_AA_DIS_1.bag",
-        "1p_AA_DIS_2.bag"
-        
-      ]
-  }
-
-  }
+    "single_person": {
+        "engaged": {
+            "person_id": [
+                "ztclh",
+                "ztclh"
+            ],
+            "expected_result": "3",
+            "rosbag": [
+                "1p_AA_ENG_1.bag",
+                "1p_AA_ENG_2.bag"
+            ]
+        },
+        "disengaged": {
+            "person_id": [],
+            "expected_result": "1",
+            "rosbag": []
+        }
+    }
 }
-
