@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-from hri_engagement.engagement_node import BUFFER_DURATION, REFERENCE_FRAME, NODE_RATE, VISUAL_SOCIAL_ENGAGEMENT_THR, EngagementNode
+from hri_engagement.engagement_node import BUFFER_DURATION, NODE_RATE, VISUAL_SOCIAL_ENGAGEMENT_THR, EngagementNode
 import os
 import json
 import tf2_ros
@@ -31,7 +31,6 @@ class TestHRIEngagement(unittest.TestCase):
         self.person_id = dict()
         self.face_id = dict()
         self.reference_frame = "camera_link"
-        REFERENCE_FRAME = self.reference_frame
         engagement_history_size = NODE_RATE * BUFFER_DURATION
         self.frame_to_skip = engagement_history_size + 10
         self.visual_social_engagement_thr = VISUAL_SOCIAL_ENGAGEMENT_THR
@@ -110,7 +109,8 @@ class TestHRIEngagement(unittest.TestCase):
         # run the unittest for one rosbag
         for i in range(len(self.rosbag_files)):
             engagement_node = \
-                EngagementNode(self.visual_social_engagement_thr)
+                EngagementNode(self.visual_social_engagement_thr,
+                               self.reference_frame)
             person_instance.id = (self.persons_id[i])
             rospy.loginfo(f'Processing file ...'
                           f'{self.directory + self.rosbag_files[i]}')
@@ -129,7 +129,10 @@ class TestHRIEngagement(unittest.TestCase):
             # the possibility to swich from UNKOWN to ENGAGED.
             frame_counter = 0
 
-            for (topic, msg, t) in iterator:
+            msgs = [m for m in iterator]
+            prev_timestamp = msgs[0].timestamp
+
+            for (topic, msg, t) in msgs:
                 # get the tracked persons from the topic
                 if topic == "/humans/persons/tracked":
                     self.person_tracked = msg
@@ -173,8 +176,8 @@ class TestHRIEngagement(unittest.TestCase):
                                         tf_hface_to_hgaze.child_frame_id,
                                         tf_hface_to_hgaze)
 
-                        rospy.sleep(rospy.Duration(
-                            nsecs=(1e9/script.engagement_node.NODE_RATE)))
+                        rospy.sleep(t-prev_timestamp)
+                        prev_timestamp = t
 
                         try:
                             engagement_node.get_tracked_humans()
@@ -182,9 +185,7 @@ class TestHRIEngagement(unittest.TestCase):
                                 frame_counter += 1
                             else:
                                 self.assertEqual(self.expected_result,
-                                                 engagement_node.active_persons
-                                                 [self.persons_id[i]].
-                                                 person_current_engagement_level)
+                                                 engagement_node.active_persons[self.persons_id[i]].person_current_engagement_level)
 
                         except (tf2_ros.LookupException,
                                 tf2_ros.ConnectivityException,
@@ -228,7 +229,8 @@ class TestHRIEngagement(unittest.TestCase):
         # run the unittest for one rosbag
         for i in range(len(self.rosbag_files)):
             engagement_node = \
-                EngagementNode(self.visual_social_engagement_thr)
+                EngagementNode(self.visual_social_engagement_thr,
+                               self.reference_frame)
             person_instance.id = (self.persons_id[i])
             rospy.loginfo(f'Processing file ...'
                           f'{self.directory + self.rosbag_files[i]}')
@@ -245,7 +247,10 @@ class TestHRIEngagement(unittest.TestCase):
             # the possibility to swich from UNKOWN to ENGAGED.
             frame_counter = 0
 
-            for (topic, msg, t) in iterator:
+            msgs = [m for m in iterator]
+            prev_timestamp = msgs[0].timestamp
+
+            for (topic, msg, t) in msgs:
                 # get the tracked persons from the topic
                 if topic == "/humans/persons/tracked":
                     self.person_tracked = msg
@@ -288,6 +293,9 @@ class TestHRIEngagement(unittest.TestCase):
                         self.publish_tf(tf_hface_to_hgaze.header.frame_id,
                                         tf_hface_to_hgaze.child_frame_id,
                                         tf_hface_to_hgaze)
+
+                        rospy.sleep(t-prev_timestamp)
+                        prev_timestamp = t
 
                         try:
                             engagement_node.get_tracked_humans()

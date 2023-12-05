@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import absolute_import
-from hri_engagement.engagement_node import BUFFER_DURATION, REFERENCE_FRAME, NODE_RATE, EngagementNode
+from hri_engagement.engagement_node import BUFFER_DURATION, NODE_RATE, EngagementNode
 import os
 import json
 import tf2_ros
@@ -31,7 +31,6 @@ class TestHRIEngagement(unittest.TestCase):
         self.person_id = dict()
         self.face_id = dict()
         self.reference_frame = "camera_link"
-        REFERENCE_FRAME = self.reference_frame
         engagement_history_size = NODE_RATE * BUFFER_DURATION
         self.frame_to_skip = engagement_history_size + 10
         self.visual_social_engagement_thr = 0.5
@@ -112,7 +111,8 @@ class TestHRIEngagement(unittest.TestCase):
         # run the unittest for one rosbag
         for i in range(len(self.rosbag_files)):
             engagement_node = \
-                EngagementNode(self.visual_social_engagement_thr)
+                EngagementNode(self.visual_social_engagement_thr,
+                               self.reference_frame)
             person_instance.id = (self.persons_id[i])
             rospy.loginfo(f'Processing file ...'
                           f'{self.directory + self.rosbag_files[i]}')
@@ -226,7 +226,8 @@ class TestHRIEngagement(unittest.TestCase):
         # run the unittest for one rosbag
         for i in range(len(self.rosbag_files)):
             engagement_node = \
-                EngagementNode(self.visual_social_engagement_thr)
+                EngagementNode(self.visual_social_engagement_thr,
+                               self.reference_frame)
             person_instance.id = (self.persons_id[i])
             rospy.loginfo(f'Processing file ...'
                           f'{self.directory + self.rosbag_files[i]}')

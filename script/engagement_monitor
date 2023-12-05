@@ -17,5 +17,5 @@ if __name__ == "__main__":
     VISUAL_SOCIAL_ENGAGEMENT_THR = rospy.get_param(
         "~engagement_threshold", default=VISUAL_SOCIAL_ENGAGEMENT_THR
     )
-    node = EngagementNode()
+    node = EngagementNode(VISUAL_SOCIAL_ENGAGEMENT_THR, REFERENCE_FRAME)
     node.run()

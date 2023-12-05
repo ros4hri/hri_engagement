@@ -58,8 +58,10 @@ class PersonEngagement(object):
     # DISENGAGING: the person has started to look away from the robot
     """
 
-    def __init__(self, person: Person):
+    def __init__(self, person: Person, reference_frame=REFERENCE_FRAME):
         self.person = person
+
+        self.reference_frame = reference_frame
         # flag
         self.is_registered = True
 
@@ -129,7 +131,7 @@ class PersonEngagement(object):
 
         # compute the person's position 'viewed' from the robot's 'gaze'
         person_from_robot = self.person.face.gaze_transform(
-            from_frame=REFERENCE_FRAME)
+            from_frame=self.reference_frame)
 
         if person_from_robot == tf2_ros.TransformStamped():
             rospy.logdebug(
@@ -351,6 +353,7 @@ class EngagementNode(object):
     def __init__(
             self,
             visual_social_engagement_thr: float = VISUAL_SOCIAL_ENGAGEMENT_THR,
+            reference_frame: str = REFERENCE_FRAME
     ):
         """
         :param visual_social_engagement_thr: -> float
@@ -360,6 +363,7 @@ class EngagementNode(object):
 
         # visual social engagement threshold
         self.visual_social_engagement_thr = visual_social_engagement_thr
+        self.reference_frame = reference_frame
         self.buffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.buffer)
         self.hri_listener = HRIListener()
@@ -405,7 +409,7 @@ class EngagementNode(object):
                 self.active_persons[person_id].run()
             else:
                 self.active_persons[person_id] = PersonEngagement(
-                    person=person_instance)
+                    person_instance, self.reference_frame)
                 self.active_persons[person_id].run()
 
     def run(self):
