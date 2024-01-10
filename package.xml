@@ -19,6 +19,7 @@
   <exec_depend>tf</exec_depend>
   <exec_depend>pyhri</exec_depend>
   <test_depend version_gt="0.25.3">python3-pandas</test_depend>
+  <test_depend>rostest</test_depend>
   <test_depend>rosunit</test_depend>
 
 </package>
