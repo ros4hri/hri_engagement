@@ -2,6 +2,11 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* add missing dep on rostest
+* Contributors: Séverin Lemaignan
+
 1.0.0 (2023-12-05)
 ------------------
 * [test] disabled simple 'disengagement' bagfiles
