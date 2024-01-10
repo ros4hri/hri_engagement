@@ -2,8 +2,8 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.1 (2024-01-10)
+------------------
 * add missing dep on rostest
 * Contributors: Séverin Lemaignan
 
