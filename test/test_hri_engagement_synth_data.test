@@ -1,4 +1,0 @@
-<launch>
-	<include file="$(find hri_engagement)/launch/monitor.launch"/>
-	<test test-name="synth_data" pkg="hri_engagement" type="test_synth_data.py" time-limit="300.0"/>
-</launch>

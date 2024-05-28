@@ -1,8 +1,0 @@
-<launch>
-
-    <test test-name="ros_test_hri_engagement_simple" pkg="hri_engagement" type="test_simple_hri_engagement.py" time-limit="120.0"/>
-    <!-- Currently disabled, as hri_engagement can not yet handle these situations
-    <test test-name="ros_test_hri_engagement_complex" pkg="hri_engagement" type="test_complex_hri_engagement.py" />
-    -->
-
-</launch>
