@@ -113,15 +113,17 @@ class TestEngagementMixin():
         self.tester_executor = SingleThreadedExecutor()
         self.tester_executor.add_node(self.tester_node)
 
-        self.hri_listener = HRIListener('hri_node', False)
+        self.hri_listener = HRIListener('hri_listener_test_node', False)
 
         self.engagement_node.trigger_activate()
         return super().setUp()
 
     def tearDown(self) -> None:
+
         self.engagement_node.trigger_deactivate()
         del self.hri_listener
         self.tester_node.destroy_node()
+
         return super().tearDown()
 
     def spin(self, time_ns=None):
