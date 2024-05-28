@@ -149,6 +149,11 @@ class PersonEngagement(object):
             self.get_logger().debug("No face detected, can not compute engagement")
             return
 
+        if not self.person.face.gaze_transform:
+            self.get_logger().debug(
+                "Face detected, but can not compute gaze direction. Can not compute engagement")
+            return
+
         # compute the person's position 'viewed' from the robot's 'gaze'
         person_from_robot = self.person.face.gaze_transform(
             from_frame=self.reference_frame)
@@ -334,7 +339,7 @@ class PersonEngagement(object):
         """
 
         engagement_msg = EngagementLevel()
-        engagement_msg.header.stamp = self.node.get_clock().now()
+        engagement_msg.header.stamp = self.node.get_clock().now().to_msg()
         engagement_msg.level = self.person_current_engagement_level
         self.engagement_status_pub.publish(engagement_msg)
 
@@ -445,7 +450,8 @@ class EngagementNode(Node):
         return super().on_cleanup(state)
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
-        del self.hri_listener
+        # TODO: this crashes the node, need to investigate why
+        # del self.hri_listener
         self.destroy_ros_interfaces()
         self.get_logger().info('State: Inactive.')
         return super().on_deactivate(state)
