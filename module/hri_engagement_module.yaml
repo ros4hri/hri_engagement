@@ -1,0 +1,2 @@
+hri_engagement:
+  launch: "hri_engagement hri_engagement.launch.py"

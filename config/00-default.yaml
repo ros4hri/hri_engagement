@@ -1,0 +1,10 @@
+/hri_engagement:
+  ros__parameters:
+    reference_frame: "sellion_link" # the robot's reference point, used to compute the distance and mutual gaze. Should be aligned with the robot's gaze direction
+    max_distance: 4.0 # meters. people further away than `max_distance` are automatically set to be DISENGAGED
+    field_of_view: 60.0 # degrees. Field of 'attention' of both the humans and the robot. If eg the robot is outside of the field of attention of the human, this human will be considered as dis-engaged, as it does not look at the robot.
+    engagement_threshold: 0.5 # used to decide 'when' a person is considered as engaging (or disengaging). Increase this value to make it 'harder' for the robot to consider someone as 'engaging', decrease it for the opposite effect.
+    observation_window: 10. # seconds. The time window used to compute the engagement level of a person. The higher the value, the more stable the engagement level will be.
+    rate: 10. # Hz. The rate at which the engagement level is computed and published.
+
+

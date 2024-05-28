@@ -45,19 +45,8 @@ ROS API
 
 #### Node parameters:
 
-- `~reference_frame` (default: `/sellion_link`): the robot's reference point,
-  used to compute the distance and mutual gaze. Should be aligned with the
-  robot's gaze direction
-- `~max_distance` (default: `4`m): people further away than `max_distance` are
-  automatically set to be `DISENGAGED`
-- `~field_of_view` (default: `60` degrees): field of 'attention' of both the
-  humans and the robot, in degrees. If eg the robot is outside of the field of
-  attention of the human, this human will be considered as dis-engaged, as it
-  does not look at the robot.
-- `~engagement_threshold` (default: `0.55`): used to decide 'when' a person is
-  considered as engaging (or disengaging). Increase this value to make it
-  'harder' for the robot to consider someone as 'engaging', decrease it for the
-  opposite effect.
+See [config/00-default.yaml](config/00-default.yaml) for the list of parameters,
+their documentation, and their default values.
 
 ### Topics
 

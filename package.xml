@@ -1,25 +1,33 @@
 <?xml version="1.0"?>
-<package format="2">
+<package format="3">
   <name>hri_engagement</name>
-  <version>1.0.1</version>
+  <version>1.9.9</version>
   <description>Engagement detection for ROS4HRI</description>
 
-  <maintainer email="antonio.andriella@pal-robotics.com">Antonio Andriella</maintainer>
+  <maintainer email="severin.lemaignan@pal-robotics.com">Séverin Lemaignan</maintainer>
 
-  <license>BSD</license>
+  <license>Apache License 2.0</license>
 
   <author email="antonio.andriella@pal-robotics.com">Antonio Andriella</author>
 
-  <buildtool_depend>catkin</buildtool_depend>
-  <exec_depend>rospy</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>lifecycle_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf_transformations</exec_depend>
   <exec_depend>hri_msgs</exec_depend>
   <exec_depend>hri_actions_msgs</exec_depend>
-  <exec_depend>tf</exec_depend>
   <exec_depend>pyhri</exec_depend>
-  <test_depend version_gt="0.25.3">python3-pandas</test_depend>
-  <test_depend>rostest</test_depend>
-  <test_depend>rosunit</test_depend>
 
+  <test_depend version_gt="0.25.3">python3-pandas</test_depend>
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
 </package>
