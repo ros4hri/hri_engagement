@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -54,6 +55,7 @@ def spin_some(executor: Executor, timeout=timedelta(seconds=10.)):
 
 
 class TestEngagementMixin():
+
     @classmethod
     def setUpClass(cls) -> None:
         rclpy.init()
@@ -79,7 +81,8 @@ class TestEngagementMixin():
 
     def addPerson(self, person_id: str):
 
-        print(f"Adding publisher for person {person_id}")
+        self.tester_node.get_logger().info(
+            f"New person {person_id}")
         self.persons_pub[person_id] = self.tester_node.create_publisher(
             String, f'/humans/persons/{person_id}/face_id', qos_profile=self.latching_qos)
 
@@ -91,15 +94,12 @@ class TestEngagementMixin():
 
         self.h_p_t_pub = self.tester_node.create_publisher(
             IdsList, '/humans/persons/tracked', 1)
+
         self.h_f_t_pub = self.tester_node.create_publisher(
             IdsList, '/humans/faces/tracked', 1)
 
         self.tf_pub = self.tester_node.create_publisher(
             TFMessage, '/tf', 1)
-
-        self.tf_static_pub = self.tester_node.create_publisher(
-            TFMessage, '/tf_static', qos_profile=self.latching_qos
-        )
 
         self.persons_pub = dict()
 
@@ -107,21 +107,45 @@ class TestEngagementMixin():
             '/humans/persons/tracked': self.h_p_t_pub,
             '/humans/faces/tracked': self.h_f_t_pub,
             '/tf': self.tf_pub,
-            '/tf_static': self.tf_static_pub,
         }
+
+        self.faces = ["f00000", "f00001", "f00002"]
+
+        for f in self.faces:
+            self.addPerson("person_" + f)
 
         self.tester_executor = SingleThreadedExecutor()
         self.tester_executor.add_node(self.tester_node)
 
-        self.hri_listener = HRIListener('hri_listener_test_node', False)
+        self.hri_listener = HRIListener(
+            'hri_listener_test_node', False)  # no auto-spin
 
         self.engagement_node.trigger_activate()
+
+        # wait for the publishers to be ready
+        time.sleep(0.5)
+
+        # pre-publish all the faces and persons (linked to the faces) that we
+        # expect to see
+        self.h_f_t_pub.publish(IdsList(ids=self.faces))
+        self.h_p_t_pub.publish(
+            IdsList(ids=["person_" + f for f in self.faces]))
+
+        for f in self.faces:
+            self.persons_pub["person_" + f].publish(String(data=f))
+
         return super().setUp()
 
     def tearDown(self) -> None:
 
+        self.tester_node.get_logger().info("Tearing down")
+
         self.engagement_node.trigger_deactivate()
+
         del self.hri_listener
+        self.tester_executor.remove_node(self.tester_node)
+        for pub in self.publishers_map.values():
+            pub.destroy()
         self.tester_node.destroy_node()
 
         return super().tearDown()
@@ -134,24 +158,21 @@ class TestEngagementMixin():
         self.hri_listener.spin_some(timedelta(seconds=1.))
         spin_some(self.tester_executor)
 
-    def _test(self, bag_path: Path, expected_final: str):
+    def _test(self, bag_path: Path, expected_engagement_timeline: dict[str, dict[int, EngagementLevel]]):
         bag_reader = SequentialReader()
         print(str(bag_path))
         bag_reader.open(StorageOptions(uri=str(bag_path)),
                         ConverterOptions('', ''))
 
         self.spin()
-        # self.assertIn('anonymous_speaker', self.hri_listener.voices)
+
+        self.assertCountEqual(self.faces, self.hri_listener.faces)
+        self.assertCountEqual(
+            ["person_" + f for f in self.faces], self.hri_listener.persons)
 
         try:
             while bag_reader.has_next():
                 topic, msg_raw, time_ns = bag_reader.read_next()
-
-                if topic.startswith('/humans/persons/'):
-                    person_id = topic.split('/')[3]
-                    if person_id != "tracked" \
-                            and person_id not in self.persons_pub:
-                        self.addPerson(person_id)
 
                 self.publishers_map[topic].publish(msg_raw)
                 self.spin(time_ns)
@@ -163,7 +184,6 @@ class TestEngagementMixin():
 
         print("Bag file complete")
 
-        # voice = self.hri_listener.voices['anonymous_speaker']
         # self.assertEquals(voice.incremental_speech, expected_final)
         # self.assertEquals(voice.speech, expected_final)
 
@@ -172,10 +192,15 @@ class TestSimpleEngagement(TestEngagementMixin, unittest.TestCase):
     reference_frame = 'camera_link'
     max_distance = 4.0
     field_of_view = 60.0
-    bags_path = Path().cwd() / 'test' / 'simple_bags'
+    bags_path = Path().cwd() / 'test' / 'data'
 
-    def test_bag_1(self):
-        self._test(self.bags_path / '1p_AA_DIS_1', 'hello')
+    def test_full_engagement(self):
+        self._test(self.bags_path / 'bag_1_engaged',
+                   {"f00000": {0: EngagementLevel.ENGAGED}})
+
+    def test_full_disengagement(self):
+        self._test(self.bags_path / 'bag_2_disengaged',
+                   {"f00000": {0: EngagementLevel.DISENGAGED}})
 
 #
 # class TestHRIEngagement(unittest.TestCase):
