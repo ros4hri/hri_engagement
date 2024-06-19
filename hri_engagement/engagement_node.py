@@ -450,8 +450,7 @@ class EngagementNode(Node):
         return super().on_cleanup(state)
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
-        # TODO: this crashes the node, need to investigate why
-        # del self.hri_listener
+        del self.hri_listener
         self.destroy_ros_interfaces()
         self.get_logger().info('State: Inactive.')
         return super().on_deactivate(state)
