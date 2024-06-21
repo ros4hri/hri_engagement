@@ -29,7 +29,7 @@ from hri import HRIListener
 from hri_msgs.msg import EngagementLevel, IdsList
 from tf2_msgs.msg import TFMessage
 from std_msgs.msg import String
-from hri_engagement.engagement_node import EngagementNode
+from hri_engagement.engagement_node import EngagementNode, PersonEngagement
 
 
 PKG = 'test_hri_engagement'
@@ -166,9 +166,16 @@ class TestEngagementMixin():
 
         self.spin()
 
-        self.assertCountEqual(self.faces, self.hri_listener.faces)
+        expected_persons = ["person_" +
+                            f for f in expected_engagement_timeline.keys()]
+
+        self.assertCountEqual(self.faces, self.hri_listener.faces.keys())
         self.assertCountEqual(
-            ["person_" + f for f in self.faces], self.hri_listener.persons)
+            expected_persons, self.hri_listener.tracked_persons.keys())
+
+        seen_active_persons = set()
+
+        nb_engagement_samples = 0
 
         try:
             while bag_reader.has_next():
@@ -176,6 +183,16 @@ class TestEngagementMixin():
 
                 self.publishers_map[topic].publish(msg_raw)
                 self.spin(time_ns)
+
+                seen_active_persons |= set(
+                    self.engagement_node.active_persons.keys())
+
+                print(
+                    self.hri_listener.tracked_persons["person_f00000"].engagement_status)
+
+                if "person_f00000" in self.engagement_node.active_persons:
+                    print(len(
+                        self.engagement_node.active_persons["person_f00000"].person_engagement_history))
         except Exception as e:
             # print full traceback
             import traceback
@@ -184,7 +201,7 @@ class TestEngagementMixin():
 
         print("Bag file complete")
 
-        # self.assertEquals(voice.incremental_speech, expected_final)
+        self.assertCountEqual(expected_persons, seen_active_persons)
         # self.assertEquals(voice.speech, expected_final)
 
 
@@ -194,13 +211,19 @@ class TestSimpleEngagement(TestEngagementMixin, unittest.TestCase):
     field_of_view = 60.0
     bags_path = Path().cwd() / 'test' / 'data'
 
-    def test_full_engagement(self):
+    def test_full__engagement(self):
         self._test(self.bags_path / 'bag_1_engaged',
-                   {"f00000": {0: EngagementLevel.ENGAGED}})
+                   {"f00000": {0: EngagementLevel.ENGAGED},
+                    "f00001": {0: EngagementLevel.UNKNOWN},
+                    "f00002": {0: EngagementLevel.UNKNOWN}
+                    })
 
     def test_full_disengagement(self):
         self._test(self.bags_path / 'bag_2_disengaged',
-                   {"f00000": {0: EngagementLevel.DISENGAGED}})
+                   {"f00000": {0: EngagementLevel.DISENGAGED},
+                    "f00001": {0: EngagementLevel.UNKNOWN},
+                    "f00002": {0: EngagementLevel.UNKNOWN}
+                    })
 
 #
 # class TestHRIEngagement(unittest.TestCase):

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import timedelta
 import math
 import json
 
@@ -82,6 +83,8 @@ class PersonEngagement(object):
 
         # number of samples used to infer the user's engagement
         self.engagement_history_size = node_rate * buffer_duration
+        # start publishing the engagement status after half the buffer duration
+        self.min_samples = 0.5 * self.engagement_history_size
 
         self.is_registered = True
 
@@ -277,7 +280,7 @@ class PersonEngagement(object):
         """
 
         # start computed engaged when reaching half the nominal buffer size
-        if len(self.person_engagement_history) < self.engagement_history_size * 0.5:
+        if len(self.person_engagement_history) < self.min_samples:
             return
 
         # clean up the person engagement history
