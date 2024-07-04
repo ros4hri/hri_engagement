@@ -16,6 +16,9 @@
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>launch_pal</exec_depend>
   <exec_depend>tf_transformations</exec_depend>
   <exec_depend>hri_msgs</exec_depend>
   <exec_depend>hri_actions_msgs</exec_depend>
