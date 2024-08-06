@@ -132,8 +132,8 @@ class PersonEngagement(object):
         """
         self.person_current_engagement_level = EngagementLevel.UNKNOWN
         self.publish_engagement_status()
-        self.engagement_status_pub.destroy()
-        self.intent_pub.destroy()
+        self.node.destroy_publisher(self.engagement_status_pub)
+        self.node.destroy_publisher(self.intent_pub)
 
     def assess_engagement(self):
         """
@@ -412,12 +412,6 @@ class EngagementNode(Node):
             'rate', 10., ParameterDescriptor(
                 description="Engagement level computation and publication rate (in Hz)."))
 
-        # get the list of IDs of the currently visible persons
-        self.tracked_persons_in_the_scene = None
-
-        # those humans who are actively detected and are considered as 'engaged'
-        self.active_persons = dict()
-
         self.get_logger().info('State: Unconfigured.')
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
@@ -434,6 +428,12 @@ class EngagementNode(Node):
         return super().on_configure(state)
 
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
+
+        # get the list of IDs of the currently visible persons
+        self.tracked_persons_in_the_scene = None
+
+        # those humans who are actively detected and are considered as 'engaged'
+        self.active_persons = dict()
 
         self.hri_listener = HRIListener("hri_engagement_listener")
 
@@ -453,8 +453,10 @@ class EngagementNode(Node):
         return super().on_cleanup(state)
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
-        del self.hri_listener
         self.destroy_ros_interfaces()
+        del self.hri_listener
+        del self.active_persons
+        del self.tracked_persons_in_the_scene
         self.get_logger().info('State: Inactive.')
         return super().on_deactivate(state)
 

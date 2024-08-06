@@ -92,21 +92,21 @@ class TestEngagementMixin():
         self.tester_node = rclpy.create_node('tester_node')
         self.clock_pub = self.tester_node.create_publisher(Clock, '/clock', 1)
 
-        self.h_p_t_pub = self.tester_node.create_publisher(
+        h_p_t_pub = self.tester_node.create_publisher(
             IdsList, '/humans/persons/tracked', 1)
 
-        self.h_f_t_pub = self.tester_node.create_publisher(
+        h_f_t_pub = self.tester_node.create_publisher(
             IdsList, '/humans/faces/tracked', 1)
 
-        self.tf_pub = self.tester_node.create_publisher(
+        tf_pub = self.tester_node.create_publisher(
             TFMessage, '/tf', 1)
 
         self.persons_pub = dict()
 
         self.publishers_map = {
-            '/humans/persons/tracked': self.h_p_t_pub,
-            '/humans/faces/tracked': self.h_f_t_pub,
-            '/tf': self.tf_pub,
+            '/humans/persons/tracked': h_p_t_pub,
+            '/humans/faces/tracked': h_f_t_pub,
+            '/tf': tf_pub,
         }
 
         self.faces = ["f00000", "f00001", "f00002"]
@@ -127,8 +127,8 @@ class TestEngagementMixin():
 
         # pre-publish all the faces and persons (linked to the faces) that we
         # expect to see
-        self.h_f_t_pub.publish(IdsList(ids=self.faces))
-        self.h_p_t_pub.publish(
+        h_f_t_pub.publish(IdsList(ids=self.faces))
+        h_p_t_pub.publish(
             IdsList(ids=["person_" + f for f in self.faces]))
 
         for f in self.faces:
@@ -143,9 +143,10 @@ class TestEngagementMixin():
         self.engagement_node.trigger_deactivate()
 
         del self.hri_listener
+
         self.tester_executor.remove_node(self.tester_node)
         for pub in self.publishers_map.values():
-            pub.destroy()
+            self.tester_node.destroy_publisher(pub)
         self.tester_node.destroy_node()
 
         return super().tearDown()
