@@ -12,22 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import timedelta
-import math
 import json
+import math
 
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from geometry_msgs.msg import TransformStamped
+from hri import HRIListener, Person
+from hri_actions_msgs.msg import Intent
+from hri_msgs.msg import EngagementLevel
+from rcl_interfaces.msg import ParameterDescriptor
 import rclpy
 from rclpy.executors import SingleThreadedExecutor, ExternalShutdownException
-from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.lifecycle import Node, TransitionCallbackReturn
 from rclpy.lifecycle.node import LifecycleState
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from std_msgs.msg import Header
-from hri import HRIListener, Person
-from hri_msgs.msg import EngagementLevel
-from hri_actions_msgs.msg import Intent
 import tf_transformations as transformations
-from geometry_msgs.msg import TransformStamped
 
 EngagementStatus = {
     # unknown: no information is provided about the engagement level
