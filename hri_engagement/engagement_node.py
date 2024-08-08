@@ -82,9 +82,9 @@ class PersonEngagement(object):
         self.engagement_threshold = engagement_threshold
 
         # number of samples used to infer the user's engagement
-        self.engagement_history_size = rate * observation_window
+        self.engagement_history_size = int(rate * observation_window)
         # start publishing the engagement status after half the buffer duration
-        self.min_samples = 0.5 * self.engagement_history_size
+        self.min_samples = int(0.5 * self.engagement_history_size)
 
         self.is_registered = True
 
@@ -158,8 +158,7 @@ class PersonEngagement(object):
             return
 
         # compute the person's position 'viewed' from the robot's 'gaze'
-        person_from_robot = self.person.face.gaze_transform(
-            from_frame=self.reference_frame)
+        person_from_robot = self.person.face.gaze_transform
 
         if person_from_robot == TransformStamped():
             self.get_logger().debug(
@@ -423,8 +422,7 @@ class EngagementNode(Node):
             "engagement_threshold").value
         self.observation_window = self.get_parameter("observation_window").value
         self.rate = self.get_parameter("rate").value
-        self.buffer_duration = self.get_parameter("observation_window").value
-        self.node_rate = self.get_parameter("rate").value
+        self.use_sim_time = self.get_parameter("use_sim_time").value
 
         self.get_logger().info('State: Inactive.')
         return super().on_configure(state)
@@ -437,15 +435,16 @@ class EngagementNode(Node):
         # those humans who are actively detected and are considered as 'engaged'
         self.active_persons = dict()
 
-        self.hri_listener = HRIListener("hri_engagement_listener")
+        self.hri_listener = HRIListener('hri_engagement_listener', True, self.use_sim_time)
+        self.hri_listener.set_reference_frame(self.reference_frame)
 
         self.proc_timer = self.create_timer(
-            1/self.node_rate, self.get_tracked_humans)
+            1/self.rate, self.get_tracked_humans, clock=self.get_clock())
 
         self.diag_pub = self.create_publisher(
             DiagnosticArray, '/diagnostics', 1)
         self.diag_timer = self.create_timer(
-            1/DIAG_PUB_RATE, self.do_diagnostics)
+            1/DIAG_PUB_RATE, self.do_diagnostics, clock=self.get_clock())
 
         self.get_logger().info('State: Active.')
         return super().on_activate(state)
