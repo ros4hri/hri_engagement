@@ -35,9 +35,9 @@ def generate_launch_description():
         namespace='',
         package=pkg,
         executable='engagement',
-        parameters=config["parameters"],
-        remappings=config["remappings"],
-        arguments=config["arguments"],
+        parameters=config['parameters'],
+        remappings=config['remappings'],
+        arguments=config['arguments'],
         output='both',
         emulate_tty=True,
     )

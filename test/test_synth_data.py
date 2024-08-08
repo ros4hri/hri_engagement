@@ -1,3 +1,17 @@
+# Copyright (c) 2024 PAL Robotics S.L. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 import json
@@ -27,14 +41,14 @@ import tf2_ros
 from hri_engagement.engagement_node import EngagementNode
 
 sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..")))
+    os.path.join(os.path.dirname(__file__), '..')))
 
-PKG = "hri_engagement"
+PKG = 'hri_engagement'
 
 OBSERVATION_WINDOW = 10.
 FOV_DEG = 60.
 FOV = FOV_DEG * PI / 180.
-REFERENCE_FRAME = "sellion_link"
+REFERENCE_FRAME = 'sellion_link'
 NODE_RATE = 10.
 
 
@@ -91,7 +105,7 @@ class PersonState:
     head_rot: Rotation = HEAD_ROT_FRONT
     gaze_rot: Rotation = GAZE_ROT_FRONT
     duration: float = 1.5 * OBSERVATION_WINDOW
-    movement: str = "static"
+    movement: str = 'static'
 
 
 PersonData = List[PersonState]
@@ -113,18 +127,17 @@ def spin_some(executor: Executor, timeout=timedelta(seconds=1.)):
             except TimeoutException:
                 elapsed = datetime.now() - start
                 if elapsed > timeout:
-                    pass
-                    # raise TimeoutException(
-                    #     f'Time elapsed spinning {elapsed} with timeout {timeout}')
+                    raise TimeoutException(
+                        f'Time elapsed spinning {elapsed} with timeout {timeout}')
             except StopIteration:
                 break
-    
+
     # run twice to ensure simulated clock timers are executed:
     # clock is updated on the first run with a subscriber callback,
     # and timer callbacks are evaluated before subscriber callbacks
     # https://docs.ros.org/en/humble/Concepts/Intermediate/About-Executors.html#scheduling-semantics
     spin_some_cb(timeout)
-    spin_some_cb(timeout)
+    # spin_some_cb(timeout)
 
 
 class SynthDataPublisher(Node):
@@ -137,14 +150,14 @@ class SynthDataPublisher(Node):
         self.persons_ids = self.df.columns.get_level_values(0).unique()
         self.time = Time()
 
-        self.clock_pub = self.node.create_publisher(Clock, "/clock", 1)
+        self.clock_pub = self.node.create_publisher(Clock, '/clock', 1)
 
         self.persons_tracked_pub = self.node.create_publisher(
-            IdsList, "/humans/persons/tracked", 1)
+            IdsList, '/humans/persons/tracked', 1)
         self.faces_tracked_pub = self.node.create_publisher(
-            IdsList, "/humans/faces/tracked", 1)
+            IdsList, '/humans/faces/tracked', 1)
         self.intents_gt_pub = self.node.create_publisher(
-            Intent, "/intents/gt", len(self.persons_ids))
+            Intent, '/intents/gt', len(self.persons_ids))
         self.tf_br = tf2_ros.TransformBroadcaster(self.node)
 
         qos_latched = qos_profile_system_default
@@ -154,10 +167,10 @@ class SynthDataPublisher(Node):
         self.engagement_status_gt_pub = {}
         for id in self.persons_ids:
             self.face_id_pub[id] = self.node.create_publisher(
-                String, f"/humans/persons/{id}/face_id", qos_latched)
+                String, f'/humans/persons/{id}/face_id', qos_latched)
             self.engagement_status_gt_pub[id] = self.node.create_publisher(
-                EngagementLevel, f"/humans/persons/{id}/engagement_status/gt", qos_latched)
-        
+                EngagementLevel, f'/humans/persons/{id}/engagement_status/gt', qos_latched)
+
     @staticmethod
     def build_persons_data(data: List[PersonData]) -> pd.DataFrame:
         df = pd.DataFrame()
@@ -167,19 +180,19 @@ class SynthDataPublisher(Node):
             df_states = []
             for state in person_data:
                 end_timestamp = curr_timestamp + pd.Timedelta(seconds=state.duration)
-                df_state = pd.json_normalize(asdict(state)).drop(columns=["duration"])
+                df_state = pd.json_normalize(asdict(state)).drop(columns=['duration'])
                 df_state.index = [end_timestamp]
-                if state.movement == "static":
+                if state.movement == 'static':
                     index = pd.date_range(
                         start=curr_timestamp, end=end_timestamp,
                         freq=pd.DateOffset(seconds=1 / NODE_RATE))
-                    df_state = df_state.reindex(index=index, method="backfill")
+                    df_state = df_state.reindex(index=index, method='backfill')
                 # TODO: add other kind of movement, for instance adding noise and/or interpolating
                 # towards the next PersonState
-                df_state["tracked"] = [True] * df_state.index.size
+                df_state['tracked'] = [True] * df_state.index.size
                 start_check_timestamp = curr_timestamp + pd.Timedelta(
                     seconds=OBSERVATION_WINDOW * 1.1)
-                df_state["tested"] = [
+                df_state['tested'] = [
                     timestamp > start_check_timestamp for timestamp in df_state.index]
                 df_states.append(df_state)
                 curr_timestamp = end_timestamp
@@ -190,9 +203,8 @@ class SynthDataPublisher(Node):
     def run(self):
         df_curr = self.df.iloc[self.run_count]
         ids_tracked = [
-            id for id in self.persons_ids if (df_curr[id, "tracked"] == True)]
-        ids_tested = [id for id in self.persons_ids if (
-            df_curr[id, "tested"] == True)]
+            id for id in self.persons_ids if df_curr[id, 'tracked'] is True]
+        ids_tested = [id for id in self.persons_ids if df_curr[id, 'tested'] is True]
         ids_tracked_mgs = IdsList(ids=ids_tracked)
         self.persons_tracked_pub.publish(ids_tracked_mgs)
         self.faces_tracked_pub.publish(ids_tracked_mgs)
@@ -204,14 +216,14 @@ class SynthDataPublisher(Node):
 
             tf.header.stamp = self.time.to_msg()
             tf.header.frame_id = REFERENCE_FRAME
-            tf.child_frame_id = f"face_{id}"
-            tf.transform.translation.x = df_person_state["head_pos.x"]
-            tf.transform.translation.y = df_person_state["head_pos.y"]
-            tf.transform.translation.z = df_person_state["head_pos.z"]
+            tf.child_frame_id = f'face_{id}'
+            tf.transform.translation.x = df_person_state['head_pos.x']
+            tf.transform.translation.y = df_person_state['head_pos.y']
+            tf.transform.translation.z = df_person_state['head_pos.z']
             q = quaternion_from_euler(
-                df_person_state["head_rot.roll"],
-                df_person_state["head_rot.pitch"],
-                df_person_state["head_rot.yaw"],
+                df_person_state['head_rot.roll'],
+                df_person_state['head_rot.pitch'],
+                df_person_state['head_rot.yaw'],
             )
             tf.transform.rotation.x = q[0]
             tf.transform.rotation.y = q[1]
@@ -220,15 +232,15 @@ class SynthDataPublisher(Node):
             self.tf_br.sendTransform(tf)
 
             tf.header.stamp = self.time.to_msg()
-            tf.header.frame_id = f"face_{id}"
-            tf.child_frame_id = f"gaze_{id}"
+            tf.header.frame_id = f'face_{id}'
+            tf.child_frame_id = f'gaze_{id}'
             tf.transform.translation.x = 0.0
             tf.transform.translation.y = 0.0
             tf.transform.translation.z = 0.0
             q = quaternion_from_euler(
-                df_person_state["gaze_rot.roll"],
-                df_person_state["gaze_rot.pitch"],
-                df_person_state["gaze_rot.yaw"],
+                df_person_state['gaze_rot.roll'],
+                df_person_state['gaze_rot.pitch'],
+                df_person_state['gaze_rot.yaw'],
             )
             tf.transform.rotation.x = q[0]
             tf.transform.rotation.y = q[1]
@@ -238,7 +250,7 @@ class SynthDataPublisher(Node):
 
         for id in ids_tested:
             df_person_state = df_curr[id]
-            if df_person_state["engaged"] == True:
+            if df_person_state['engaged'] is True:
                 engagement_msg = EngagementLevel()
                 engagement_msg.header.stamp = self.node.get_clock().now().to_msg()
                 engagement_msg.level = EngagementLevel.ENGAGED
@@ -283,15 +295,15 @@ class PersonUnderTest:
         self.is_intent_engaged = False
         self.is_intent_engaged_gt = None
         self.engagement_status_sub = self.node.create_subscription(
-            EngagementLevel, f"/humans/persons/{id}/engagement_status",
+            EngagementLevel, f'/humans/persons/{id}/engagement_status',
             lambda msg: self._on_engagement_level(msg), 1)
         self.engagement_status_gt_sub = self.node.create_subscription(
-            EngagementLevel, f"/humans/persons/{id}/engagement_status/gt",
+            EngagementLevel, f'/humans/persons/{id}/engagement_status/gt',
             lambda msg: self._on_engagement_level_gt(msg), 1)
         self.intents_sub = self.node.create_subscription(
-            Intent, "/intents", lambda msg: self._on_intents(msg), 10)
+            Intent, '/intents', lambda msg: self._on_intents(msg), 10)
         self.intents_gt_sub = self.node.create_subscription(
-            Intent, "/intents/gt", lambda msg: self._on_intents_gt(msg), 10)
+            Intent, '/intents/gt', lambda msg: self._on_intents_gt(msg), 10)
 
     def close(self):
         self.node.destroy_subscription(self.engagement_status_sub)
@@ -310,12 +322,12 @@ class PersonUnderTest:
 
     def _on_intents(self, msg: Intent):
         data = json.loads(msg.data)
-        if msg.intent == Intent.ENGAGE_WITH and data["recipient"] == str(self.id):
+        if msg.intent == Intent.ENGAGE_WITH and data['recipient'] == str(self.id):
             self.is_intent_engaged = True
 
     def _on_intents_gt(self, msg: Intent):
         data = json.loads(msg.data)
-        if msg.intent == Intent.ENGAGE_WITH and data["recipient"] == str(self.id):
+        if msg.intent == Intent.ENGAGE_WITH and data['recipient'] == str(self.id):
             self.is_intent_engaged_gt = True
 
 
@@ -325,7 +337,7 @@ class EngagementTester:
         self.test_case = test_case
         self.persons_under_test = {}
         self.persons_tracked_sub = self.node.create_subscription(
-            IdsList, "/humans/persons/tracked", lambda msg: self._on_persons_tracked(msg), 1)
+            IdsList, '/humans/persons/tracked', lambda msg: self._on_persons_tracked(msg), 1)
 
     def run(self):
         for person in self.persons_under_test.values():
@@ -361,16 +373,16 @@ class GenericTestSequence(unittest.TestCase):
         rclpy.init()
         cls.hri_engagement_node = EngagementNode()
         cls.hri_engagement_node.set_parameters([
-            Parameter("observation_window", Parameter.Type.DOUBLE, OBSERVATION_WINDOW),
-            Parameter("field_of_view", Parameter.Type.DOUBLE, FOV_DEG), 
-            Parameter("reference_frame", Parameter.Type.STRING, REFERENCE_FRAME),
-            Parameter("rate", Parameter.Type.DOUBLE, NODE_RATE),
-            Parameter("use_sim_time", Parameter.Type.BOOL, True)])
+            Parameter('observation_window', Parameter.Type.DOUBLE, OBSERVATION_WINDOW),
+            Parameter('field_of_view', Parameter.Type.DOUBLE, FOV_DEG),
+            Parameter('reference_frame', Parameter.Type.STRING, REFERENCE_FRAME),
+            Parameter('rate', Parameter.Type.DOUBLE, NODE_RATE),
+            Parameter('use_sim_time', Parameter.Type.BOOL, True)])
         cls.hri_engagement_executor = SingleThreadedExecutor()
         cls.hri_engagement_executor.add_node(cls.hri_engagement_node)
         cls.hri_engagement_node.trigger_configure()
         return super().setUpClass()
-    
+
     @classmethod
     def tearDownClass(cls) -> None:
         rclpy.shutdown()
@@ -378,7 +390,7 @@ class GenericTestSequence(unittest.TestCase):
 
     def setUp(self) -> None:
         self.hri_engagement_node.trigger_activate()
-        self.tester_node = rclpy.create_node("tester")
+        self.tester_node = rclpy.create_node('tester')
         self.tester_executor = SingleThreadedExecutor()
         self.tester_executor.add_node(self.tester_node)
         self.synth_pub = SynthDataPublisher(self.tester_node)
@@ -431,9 +443,9 @@ class TestSynthData(GenericTestSequence):
             [PersonState(head_pos=HEAD_POS_SLIGHTLY_LEFT, head_rot=HEAD_ROT_SLIGHTLY_RIGHT)],
             [PersonState(
                 head_pos=HEAD_POS_SLIGHTLY_RIGHT, head_rot=HEAD_ROT_SLIGHTLY_LEFT, duration=8)]])
-    
+
     def test_two_people_one_out_fov(self):
-        self._test([    
+        self._test([
             [PersonState()],
             [PersonState(engaged=False, head_pos=HEAD_POS_LEFT, head_rot=HEAD_ROT_RIGHT)]])
 
@@ -453,4 +465,3 @@ class TestSynthData(GenericTestSequence):
             [PersonState(engaged=False, head_pos=HEAD_POS_LEFT, head_rot=HEAD_ROT_RIGHT),
              PersonState(),
              PersonState(engaged=False, head_pos=HEAD_POS_RIGHT, head_rot=HEAD_ROT_LEFT)]])
-

@@ -20,6 +20,7 @@ from geometry_msgs.msg import TransformStamped
 from hri import HRIListener, Person
 from hri_actions_msgs.msg import Intent
 from hri_msgs.msg import EngagementLevel
+from lifecycle_msgs.msg import State
 from rcl_interfaces.msg import ParameterDescriptor
 import rclpy
 from rclpy.executors import SingleThreadedExecutor, ExternalShutdownException
@@ -30,15 +31,15 @@ import tf_transformations as transformations
 
 EngagementStatus = {
     # unknown: no information is provided about the engagement level
-    EngagementLevel.UNKNOWN: "UNKNOWN",
+    EngagementLevel.UNKNOWN: 'UNKNOWN',
     # disengaged: the person has not looked in the direction of the robot
-    EngagementLevel.DISENGAGED: "DISENGAGED",
+    EngagementLevel.DISENGAGED: 'DISENGAGED',
     # engaging: the person has started to look in the direction of the robot
-    EngagementLevel.ENGAGING: "ENGAGING",
+    EngagementLevel.ENGAGING: 'ENGAGING',
     # engaged: the person is fully engaged with the robot
-    EngagementLevel.ENGAGED: "ENGAGED",
+    EngagementLevel.ENGAGED: 'ENGAGED',
     # disengaging: the person has started to look away from the robot
-    EngagementLevel.DISENGAGING: "DISENGAGING"
+    EngagementLevel.DISENGAGING: 'DISENGAGING'
 }
 
 # diagnostic message publish rate in Hertz
@@ -47,6 +48,8 @@ DIAG_PUB_RATE = 1
 
 class PersonEngagement(object):
     """
+    Auxiliary class checking the engagement status of a person.
+
     Auxiliary class that given a Person identified with their person_id,
     it publishes their engagement status on the topic:
     /humans/persons/<human_id>/engagement_status.
@@ -98,19 +101,17 @@ class PersonEngagement(object):
             self.engagement_status_pub = self.node.create_publisher(
                 EngagementLevel,
                 self.person.ns +
-                "/engagement_status",
+                '/engagement_status',
                 10,
             )
             self.intent_pub = self.node.create_publisher(
                 Intent,
-                "/intents",
+                '/intents',
                 10)
 
         except AttributeError:
             self.get_logger().warn(
-                "cannot create a pub as "
-                "the value of self.person_id is ".format(self.person.id)
-            )
+                f'cannot create a pub as the value of self.person_id is {self.person.id}')
 
         # list in which it is stored the engagement level
         # of dim equals to self.engagement_history_size.
@@ -125,10 +126,7 @@ class PersonEngagement(object):
         return self.node.get_logger()
 
     def unregister(self):
-        """
-        method that unregister the Person engagement_status_pub
-        and the face_id_sub
-        """
+        """Unregister the Person engagement_status_pub and the face_id_sub."""
         self.person_current_engagement_level = EngagementLevel.UNKNOWN
         self.publish_engagement_status()
         self.node.destroy_publisher(self.engagement_status_pub)
@@ -136,6 +134,8 @@ class PersonEngagement(object):
 
     def assess_engagement(self):
         """
+        Compute the current 'visual social engagement' metric.
+
         Computes the current 'visual social engagement' metric as defined in
         "Measuring Visual Social Engagement from Proxemics and Gaze" (by Webb
         and Lemaignan).
@@ -143,17 +143,15 @@ class PersonEngagement(object):
         If the person's engagement metric is above
         engagement_threshold, we add +1 in the engagement_history, if
         not we add a -1. The vector will be then used by the Person class to
-        estimate the human engagement over the BUFFER_DURATION
-
+        estimate the human engagement over the BUFFER_DURATION.
         """
-
         if not self.person.face:
-            self.get_logger().debug("No face detected, can not compute engagement")
+            self.get_logger().debug('No face detected, can not compute engagement')
             return
 
         if not self.person.face.gaze_transform:
             self.get_logger().debug(
-                "Face detected, but can not compute gaze direction. Can not compute engagement")
+                'Face detected, but can not compute gaze direction. Can not compute engagement')
             return
 
         # compute the person's position 'viewed' from the robot's 'gaze'
@@ -172,8 +170,8 @@ class PersonEngagement(object):
             # then set the engagement status of that person to UNKNOWN
             if self.current_time_from_tf >= self.timeout_tf:
                 self.get_logger().debug(
-                    "Timeout. Set the EngagementLevel for person"
-                    " {} to UNKNOWN".format(self.person.id)
+                    'Timeout. Set the EngagementLevel for person'
+                    ' {} to UNKNOWN'.format(self.person.id)
                 )
                 self.person_current_engagement_level = EngagementLevel.UNKNOWN
                 self.publish_engagement_status()
@@ -213,7 +211,8 @@ class PersonEngagement(object):
         if d_ab > self.max_distance:
             self.person_engagement_history.append(-1)
             self.get_logger().debug(
-                f"dAB: {d_ab:.2f}: person is too far to be engaged (max distance: {self.max_distance}m)")
+                f'dAB: {d_ab:.2f}: person is too far to be engaged (max distance: '
+                '{self.max_distance}m)')
 
             return
 
@@ -257,7 +256,8 @@ class PersonEngagement(object):
         m_ab = gaze_ab * gaze_ba
         s_ab = min(1, m_ab * log_d_ab)
         self.get_logger().debug(
-            f"dAB: {d_ab:.2f}, log(d_ab): {log_d_ab:.2f}, gazeAB: {gaze_ab:.2f}, gazeBA: {gaze_ba:.2f},  M_AB: {m_ab:.2f}, S_AB: {s_ab:.2f}")
+            f'dAB: {d_ab:.2f}, log(d_ab): {log_d_ab:.2f}, gazeAB: {gaze_ab:.2f}, '
+            f'gazeBA: {gaze_ba:.2f},  M_AB: {m_ab:.2f}, S_AB: {s_ab:.2f}')
 
         if s_ab > self.engagement_threshold:
             self.person_engagement_history.append(1)
@@ -269,14 +269,15 @@ class PersonEngagement(object):
 
     def compute_engagement(self):
         """
+        Compute the engagement level of the person.
+
         Status can be "unknown", "disengaged", "engaging",
         "engaged", "disengaging".
         It computes the engagement level of the person averaging the values
         stored in the person_engagement_history that has size:
         engagement_history_size.
-        At the beginning the person status is set to "unknown"
+        At the beginning the person status is set to "unknown".
         """
-
         # start computed engaged when reaching half the nominal buffer size
         if len(self.person_engagement_history) < self.min_samples:
             return
@@ -291,8 +292,8 @@ class PersonEngagement(object):
             len(self.person_engagement_history)
         )
 
-        self.get_logger().debug("History: %s" % self.person_engagement_history)
-        self.get_logger().debug("Mean: %s" % engagement_value)
+        self.get_logger().debug('History: %s' % self.person_engagement_history)
+        self.get_logger().debug('Mean: %s' % engagement_value)
 
         next_level = EngagementLevel.UNKNOWN
 
@@ -319,9 +320,12 @@ class PersonEngagement(object):
             elif engagement_value < -0.5:
                 next_level = EngagementLevel.DISENGAGED
 
-        if next_level != EngagementLevel.UNKNOWN and next_level != self.person_current_engagement_level:
+        if (
+            next_level != EngagementLevel.UNKNOWN and
+            next_level != self.person_current_engagement_level
+        ):
             self.person_current_engagement_level = next_level
-            self.get_logger().info("Engagement status for {} is: {}".format(
+            self.get_logger().info('Engagement status for {} is: {}'.format(
                 self.person.id,
                 EngagementStatus[self.person_current_engagement_level],
             ),
@@ -331,14 +335,11 @@ class PersonEngagement(object):
             if self.person_current_engagement_level == EngagementLevel.ENGAGED:
                 intent_msg = Intent()
                 intent_msg.intent = intent_msg.ENGAGE_WITH
-                intent_msg.data = json.dumps({"recipient": self.person.id})
+                intent_msg.data = json.dumps({'recipient': self.person.id})
                 self.intent_pub.publish(intent_msg)
 
     def publish_engagement_status(self):
-        """
-        method that publishes the engagement_status of the person
-        """
-
+        """Publish the engagement_status of the person."""
         engagement_msg = EngagementLevel()
         engagement_msg.header.stamp = self.node.get_clock().now().to_msg()
         engagement_msg.level = self.person_current_engagement_level
@@ -346,15 +347,16 @@ class PersonEngagement(object):
 
     def run(self):
         """
-        it calls the engaged_person method that computes the
-        engagement status and the callback that publishes the
-        status on the topic /humans/persons/<human_id>/engagement_status
-        """
+        Execute the periodic logic.
 
+        It calls the engaged_person method that computes the
+        engagement status and the callback that publishes the
+        status on the topic /humans/persons/<human_id>/engagement_status.
+        """
         # if we do not have the face id of the person we just return
         if not self.person.id:
             self.get_logger().debug(
-                "there is no face_id for the person {}".format(
+                'there is no face_id for the person {}'.format(
                     self.person.id), throttle_duration_sec=1
             )
             return
@@ -366,8 +368,8 @@ class PersonEngagement(object):
 
 class EngagementNode(Node):
     """
-    This node detects the persons who are in the field of view of the
-    robot's camera (tracked persons).
+    This node detects the tracked persons who are in the field of view of the robot's camera.
+
     Among those persons, it selects those who are active, that is, those whose
     visual social engagement metric (as defined in "Measuring Visual Social
     Engagement from Proxemics and Gaze" by Webb and Lemaignan) is above 0.5.
@@ -379,49 +381,48 @@ class EngagementNode(Node):
     def __init__(
             self,
     ):
-        """
-        :param engagement_threshold: -> float
-        visual social engagement threshold to be considered as 'engaging' with 
-        the robot
-        """
         super().__init__('hri_engagement')
 
         self.declare_parameter(
             'reference_frame', 'sellion_link', ParameterDescriptor(
-                description="Robot's reference point, used to compute the distance and mutual gaze."))
+                description="Robot's reference point, used to compute the distance and mutual "
+                            'gaze.'))
 
         self.declare_parameter(
             'max_distance', 4.0, ParameterDescriptor(
-                description="People further away than this distance (in meters) are considered as disengaged."))
+                description='People further away than this distance (in meters) are considered as '
+                            'disengaged.'))
 
         self.declare_parameter(
             'field_of_view', 60., ParameterDescriptor(
-                description="Field of view (in degrees) of both humans and robot. Use to compute mutual gaze between the robot and the people."))
+                description='Field of view (in degrees) of both humans and robot. '
+                            'Use to compute mutual gaze between the robot and the people.'))
 
         self.declare_parameter(
             'engagement_threshold', 0.5, ParameterDescriptor(
-                description="Threshold to start considering someone as 'engaging'. Higher values will make the engagement status more conservative."))
+                description='Threshold to start considering someone as "engaging". '
+                            'Higher values will make the engagement status more conservative.'))
 
         self.declare_parameter(
             'observation_window', 10., ParameterDescriptor(
-                description="The time window (in sec.) used to compute the engagement level of a person."))
+                description='The time window (in sec.) used to compute the engagement level of a '
+                            'person.'))
 
         self.declare_parameter(
             'rate', 10., ParameterDescriptor(
-                description="Engagement level computation and publication rate (in Hz)."))
+                description='Engagement level computation and publication rate (in Hz).'))
 
         self.get_logger().info('State: Unconfigured.')
 
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
 
-        self.max_distance = self.get_parameter("max_distance").value
-        self.reference_frame = self.get_parameter("reference_frame").value
-        self.field_of_view_rad = self.get_parameter("field_of_view").value * math.pi / 180
-        self.engagement_threshold = self.get_parameter(
-            "engagement_threshold").value
-        self.observation_window = self.get_parameter("observation_window").value
-        self.rate = self.get_parameter("rate").value
-        self.use_sim_time = self.get_parameter("use_sim_time").value
+        self.max_distance = self.get_parameter('max_distance').value
+        self.reference_frame = self.get_parameter('reference_frame').value
+        self.field_of_view_rad = self.get_parameter('field_of_view').value * math.pi / 180
+        self.engagement_threshold = self.get_parameter('engagement_threshold').value
+        self.observation_window = self.get_parameter('observation_window').value
+        self.rate = self.get_parameter('rate').value
+        self.use_sim_time = self.get_parameter('use_sim_time').value
 
         self.get_logger().info('State: Inactive.')
         return super().on_configure(state)
@@ -476,11 +477,7 @@ class EngagementNode(Node):
             person.unregister()
 
     def get_tracked_humans(self):
-        """
-        updater of self.active_persons, the dictionary of tracked humans
-        PersonEngagement
-        """
-
+        """Update self.active_persons, the dictionary of tracked humans PersonEngagement."""
         self.tracked_persons_in_the_scene = self.hri_listener.tracked_persons
 
         # check if the current active persons are
@@ -496,7 +493,7 @@ class EngagementNode(Node):
                     self.active_persons[active_human].unregister()
                     del self.active_persons[active_human]
         else:
-            self.get_logger().info("There are no active people around", throttle_duration_sec=1)
+            self.get_logger().info('There are no active people around', throttle_duration_sec=1)
 
         # check whether the active persons are new
         # if so create a new instance of a Person
@@ -530,7 +527,8 @@ class EngagementNode(Node):
         msg.values = [
             KeyValue(key='Package name', value='hri_engagement'),
             KeyValue(key='Current engagement levels:',
-                     value=str({k: EngagementStatus[v.person_current_engagement_level] for k, v in self.active_persons.items()})),
+                     value=str({k: EngagementStatus[v.person_current_engagement_level]
+                                for k, v in self.active_persons.items()})),
         ]
 
         arr.status = [msg]
