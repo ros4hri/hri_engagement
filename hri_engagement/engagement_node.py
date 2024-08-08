@@ -66,10 +66,10 @@ class PersonEngagement(object):
                  person: Person,
                  reference_frame: str,
                  max_distance: float,
-                 field_of_view: float,
+                 field_of_view_rad: float,
                  engagement_threshold: float,
-                 node_rate: float,
-                 buffer_duration: float,
+                 rate: float,
+                 observation_window: float,
                  ):
 
         self.node = node
@@ -78,11 +78,11 @@ class PersonEngagement(object):
 
         self.reference_frame = reference_frame
         self.max_distance = max_distance
-        self.fov = field_of_view
-        self.visual_social_engagement_thr = engagement_threshold
+        self.field_of_view_rad = field_of_view_rad
+        self.engagement_threshold = engagement_threshold
 
         # number of samples used to infer the user's engagement
-        self.engagement_history_size = node_rate * buffer_duration
+        self.engagement_history_size = rate * observation_window
         # start publishing the engagement status after half the buffer duration
         self.min_samples = 0.5 * self.engagement_history_size
 
@@ -142,7 +142,7 @@ class PersonEngagement(object):
         and Lemaignan).
 
         If the person's engagement metric is above
-        visual_social_engagement_thr, we add +1 in the engagement_history, if
+        engagement_threshold, we add +1 in the engagement_history, if
         not we add a -1. The vector will be then used by the Person class to
         estimate the human engagement over the BUFFER_DURATION
 
@@ -235,7 +235,7 @@ class PersonEngagement(object):
         gaze_ab = 0.0
         if xb > 0:
             gaze_ab = max(0, 1 - (math.sqrt(yb ** 2 + zb ** 2) /
-                                  (math.tan(self.fov) * xb)))
+                                  (math.tan(self.field_of_view_rad) * xb)))
 
         # gaze_BA measures how 'close' A is from the optical axis of B
         t_ba = person_from_robot.transform.translation
@@ -247,7 +247,7 @@ class PersonEngagement(object):
         log_d_ab = 0.0
         if xa > 0:
             gaze_ba = max(0, 1 - (math.sqrt(ya ** 2 + za ** 2) /
-                                  (math.tan(self.fov) * xa)))
+                                  (math.tan(self.field_of_view_rad) * xa)))
 
             # transform the distance into a factor that:
             #  - starts at 1 when distance = 0
@@ -261,7 +261,7 @@ class PersonEngagement(object):
         self.get_logger().debug(
             f"dAB: {d_ab:.2f}, log(d_ab): {log_d_ab:.2f}, gazeAB: {gaze_ab:.2f}, gazeBA: {gaze_ba:.2f},  M_AB: {m_ab:.2f}, S_AB: {s_ab:.2f}")
 
-        if s_ab > self.visual_social_engagement_thr:
+        if s_ab > self.engagement_threshold:
             self.person_engagement_history.append(1)
         else:
             # the person is currently disengaged
@@ -382,7 +382,7 @@ class EngagementNode(Node):
             self,
     ):
         """
-        :param visual_social_engagement_thr: -> float
+        :param engagement_threshold: -> float
         visual social engagement threshold to be considered as 'engaging' with 
         the robot
         """
@@ -418,9 +418,11 @@ class EngagementNode(Node):
 
         self.max_distance = self.get_parameter("max_distance").value
         self.reference_frame = self.get_parameter("reference_frame").value
-        self.fov = self.get_parameter("field_of_view").value * math.pi / 180
-        self.visual_social_engagement_thr = self.get_parameter(
+        self.field_of_view_rad = self.get_parameter("field_of_view").value * math.pi / 180
+        self.engagement_threshold = self.get_parameter(
             "engagement_threshold").value
+        self.observation_window = self.get_parameter("observation_window").value
+        self.rate = self.get_parameter("rate").value
         self.buffer_duration = self.get_parameter("observation_window").value
         self.node_rate = self.get_parameter("rate").value
 
@@ -511,10 +513,10 @@ class EngagementNode(Node):
                     person_instance,
                     self.reference_frame,
                     self.max_distance,
-                    self.fov,
-                    self.visual_social_engagement_thr,
-                    self.node_rate,
-                    self.buffer_duration,
+                    self.field_of_view_rad,
+                    self.engagement_threshold,
+                    self.rate,
+                    self.observation_window,
                 )
 
                 self.active_persons[person_id].run()
