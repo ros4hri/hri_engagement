@@ -450,31 +450,35 @@ class EngagementNode(Node):
         return super().on_activate(state)
 
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self.internal_cleanup()
         self.get_logger().info('State: Unconfigured.')
         return super().on_cleanup(state)
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
-        self.destroy_ros_interfaces()
-        del self.hri_listener
-        del self.active_persons
-        del self.tracked_persons_in_the_scene
+        self.internal_deactivate()
         self.get_logger().info('State: Inactive.')
         return super().on_deactivate(state)
 
     def on_shutdown(self, state: LifecycleState) -> TransitionCallbackReturn:
-        if state.id == State.PRIMARY_STATE_ACTIVE:
-            self.destroy_ros_interfaces()
+        if state.state_id == State.PRIMARY_STATE_ACTIVE:
+            self.internal_deactivate()
+        if state.state_id in [State.PRIMARY_STATE_ACTIVE, State.PRIMARY_STATE_INACTIVE]:
+            self.internal_cleanup()
         self.get_logger().info('State: Finalized.')
         return super().on_shutdown(state)
 
-    def destroy_ros_interfaces(self):
+    def internal_cleanup(self):
+        pass
+
+    def internal_deactivate(self):
         self.destroy_timer(self.diag_timer)
         self.destroy_publisher(self.diag_pub)
-
         self.destroy_timer(self.proc_timer)
-
         for _, person in self.active_persons.items():
             person.unregister()
+        del self.hri_listener
+        del self.active_persons
+        del self.tracked_persons_in_the_scene
 
     def get_tracked_humans(self):
         """Update self.active_persons, the dictionary of tracked humans PersonEngagement."""
