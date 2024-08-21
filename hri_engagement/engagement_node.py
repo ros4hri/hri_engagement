@@ -524,12 +524,12 @@ class EngagementNode(Node):
         now = self.get_clock().now()
         arr = DiagnosticArray(header=Header(stamp=now.to_msg()))
         msg = DiagnosticStatus(
-            name='Social perception: Engagement estimation', hardware_id='none')
+            name='/social_perception/engagement/hri_engagement', hardware_id='none')
 
         msg.level = DiagnosticStatus.OK
 
         msg.values = [
-            KeyValue(key='Package name', value='hri_engagement'),
+            KeyValue(key='Module name', value='hri_engagement'),
             KeyValue(key='Current engagement levels:',
                      value=str({k: EngagementStatus[v.person_current_engagement_level]
                                 for k, v in self.active_persons.items()})),
