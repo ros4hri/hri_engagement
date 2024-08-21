@@ -2,8 +2,8 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+2.0.1 (2024-08-21)
+------------------
 * rename diagnostics msg to match documentation (and diagnostic_aggregator) categories
 * Contributors: Séverin Lemaignan
 
