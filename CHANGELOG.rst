@@ -2,6 +2,39 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+
+Port to ROS 2
+
+* fix test dependency
+* workaroud missing dependecy in tf_transformations
+* improve lifecycle shutdown handling
+* linting
+* add license
+* exclude obsolete tests from linters
+* cleanup dependencies
+* port synthetic data tests
+* use sim time in listener; porting fixes
+* refactor parameter variables
+* enable synthetic and linting tests; relocate obsolete tests
+* fix not properly destroyed interfaces on deactivate and test tear down
+* launch: use get_pal_configuration from launch_pal
+* wip unittest
+* WIP on the unit tests
+* upstream pyhri bug fixed; can properly destroy hri_listener
+* test runs without crash, replay bag files, but does not actually test hri_engagement
+* fix some crashers
+* initial scaffolding for ROS2 unit-tests
+  Unit-testing infrastructure mostly borrowed from asr_vosk
+* convert test bag files to ROS2
+* Initial ROS2 port
+  Node runs; no testing yet, as tests need to be ported first
+  While here:
+  - add diagnostics publishing
+  - expose parameters for observation window duration and note rate
+* Contributors: Luka Juricic, Séverin Lemaignan
+
 1.0.1 (2024-01-10)
 ------------------
 * add missing dep on rostest
