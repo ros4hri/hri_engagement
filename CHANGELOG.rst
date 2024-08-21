@@ -2,8 +2,8 @@
 Changelog for package hri_engagement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+2.0.0 (2024-08-21)
+------------------
 
 Port to ROS 2
 
