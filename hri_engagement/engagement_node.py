@@ -145,22 +145,26 @@ class PersonEngagement(object):
         not we add a -1. The vector will be then used by the Person class to
         estimate the human engagement over the BUFFER_DURATION.
         """
-        if not self.person.face:
+
+        # get (and keep!) the hri::Face pointer to the current face
+        face = self.person.face
+
+        if not face:
             self.get_logger().debug('No face detected, can not compute engagement')
             return
 
-        if not self.person.face.gaze_transform:
+        if not face.gaze_transform:
             self.get_logger().debug(
                 'Face detected, but can not compute gaze direction. Can not compute engagement')
             return
 
         # compute the person's position 'viewed' from the robot's 'gaze'
-        person_from_robot = self.person.face.gaze_transform
+        person_from_robot = face.gaze_transform
 
         if person_from_robot == TransformStamped():
             self.get_logger().debug(
                 "null transform published for person's face %s" %
-                self.person.face
+                face
             )
             self.current_time_from_tf = (
                 self.node.get_clock().now() - self.start_time_from_tf
